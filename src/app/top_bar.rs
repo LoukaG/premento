@@ -1,9 +1,8 @@
-//! The top bar: logo, signed-in user, theme toggle, settings and refresh.
+//! The top bar: logo, signed-in user, theme toggle and refresh.
 
 use eframe::egui::{self, Align, Layout, RichText, ThemePreference, vec2};
 
 use super::PRementoApp;
-use crate::core::paths::config_path;
 use crate::ui::blocks::banner;
 use crate::ui::icon;
 use crate::ui::theme::pal;
@@ -39,16 +38,6 @@ impl PRementoApp {
                     } else {
                         ThemePreference::Dark
                     });
-                }
-
-                if ghost_button(ui, "⚙")
-                    .on_hover_text(format!(
-                        "Providers & settings live in\n{}",
-                        config_path().display()
-                    ))
-                    .clicked()
-                {
-                    ui.ctx().copy_text(config_path().display().to_string());
                 }
 
                 if self.prs.loading {
