@@ -14,7 +14,7 @@ Each analysis has three parts:
 | **Service Map** (attraction-inc PRs) | The attraction-inc architecture as a map, with each impacted service highlighted: **direct** (its code or config changes) or **indirect** (affected through a connection), colored by severity, with the reason |
 | **Impact Analysis** (other repos) | Affected components, breaking changes, downstream effects, data/migrations, security, performance, test coverage and suggested tests |
 
-The **Overview** tab sums these up. The **Raw** tab shows the LLM's raw response.
+The **Overview** tab sums these up.
 
 The **Ask** tab runs Claude Code or Codex in a terminal built into the tab, in a folder holding the
 PR (description, commits, discussion and diff, fetched when you start) and its review, so you can ask

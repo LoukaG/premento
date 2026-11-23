@@ -424,6 +424,19 @@ pub fn avatar(ui: &mut Ui, name: &str, size: f32) -> Response {
         FontId::proportional(size * 0.5),
         Color32::WHITE,
     );
+    // The GitHub profile picture covers the initial once it has loaded; until then, or if it
+    // can't be fetched (offline, bot accounts), the initial stays visible.
+    let px = (size * ui.ctx().pixels_per_point()).ceil() as u32;
+    let uri = format!("https://avatars.githubusercontent.com/{name}?s={}", px.max(32) * 2);
+    if let Ok(egui::load::TexturePoll::Ready { texture }) = ui.ctx().try_load_texture(
+        &uri,
+        egui::TextureOptions::LINEAR,
+        egui::SizeHint::Size { width: px, height: px, maintain_aspect_ratio: true },
+    ) {
+        egui::Image::from_texture(texture)
+            .corner_radius(CornerRadius::same((size / 2.0).round() as u8))
+            .paint_at(ui, rect);
+    }
     resp.on_hover_text(name)
 }
 

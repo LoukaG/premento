@@ -67,19 +67,17 @@ pub enum Tab {
     Impact,
     Map,
     Ask,
-    Raw,
 }
 
 impl Tab {
     /// attraction-inc PRs get the service map in place of the generic impact analysis.
-    fn for_pr(on_map: bool) -> [(Tab, &'static str); 6] {
+    fn for_pr(on_map: bool) -> [(Tab, &'static str); 5] {
         [
             (Tab::Overview, "Overview"),
             (Tab::Risk, "Risk Review"),
             (Tab::Intent, "Intent & Decisions"),
             if on_map { (Tab::Map, "Service Map") } else { (Tab::Impact, "Impact") },
             (Tab::Ask, "Ask"),
-            (Tab::Raw, "Raw"),
         ]
     }
 }
@@ -119,6 +117,7 @@ pub struct PRementoApp {
 impl PRementoApp {
     pub fn new(cc: &eframe::CreationContext<'_>, config: Config, config_error: Option<String>) -> Self {
         theme::install(&cc.egui_ctx);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
         let mut app = Self::build(config, config_error);
         app.refresh(&cc.egui_ctx);
         app
@@ -492,7 +491,7 @@ and diff, fetched now) and this review, so you can ask questions about it."
                             if let Some(err) = &stored.parse_error {
                                 self.errors.insert(
                                     key.clone(),
-                                    format!("Could not parse the model's response ({err}). See the Raw tab."),
+                                    format!("Could not parse the model's response ({err}). Try running the analysis again."),
                                 );
                             }
                             self.results.insert(key, stored);
@@ -859,7 +858,7 @@ and diff, fetched now) and this review, so you can ask questions about it."
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 10.0;
                 match (&stored.analysis, self.tab) {
-                    (_, Tab::Raw) | (None, _) => {
+                    (None, _) => {
                         card(ui, |ui| {
                             let mut raw = stored.raw.as_str();
                             ui.add(
@@ -1520,7 +1519,6 @@ mod snapshots {
                     demo_app()
                 });
             for (tab, name) in Tab::for_pr(true) {
-                if tab == Tab::Raw { continue; }
                 h.state_mut().tab = tab;
                 h.run_steps(4);
                 let img = h.render().unwrap();

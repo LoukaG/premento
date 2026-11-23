@@ -31,7 +31,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("PRemento — PR review copilot")
-            .with_icon(icon::data())
+            .with_icon(icon::window_icon())
             .with_inner_size([1360.0, 860.0])
             .with_min_inner_size([900.0, 500.0]),
         ..Default::default()
