@@ -4,7 +4,7 @@ use eframe::egui;
 
 static ICON: LazyLock<Arc<egui::IconData>> = LazyLock::new(|| {
     Arc::new(
-        eframe::icon_data::from_png_bytes(include_bytes!("../assets/premento-icon.png"))
+        eframe::icon_data::from_png_bytes(include_bytes!("../../assets/premento-icon.png"))
             .expect("the embedded PRemento icon must be a valid PNG"),
     )
 });
@@ -19,7 +19,7 @@ static WINDOW_ICON: LazyLock<Arc<egui::IconData>> = LazyLock::new(|| {
         ..Default::default()
     };
     icon.rgba.resize((icon.width * icon.height * 4) as usize, 0);
-    let background = crate::theme::DARK.surface.to_array();
+    let background = crate::ui::theme::DARK.surface.to_array();
     let inset = icon.width.min(icon.height) as f32 * 0.08;
     let half_width = icon.width as f32 / 2.0 - inset;
     let half_height = icon.height as f32 / 2.0 - inset;

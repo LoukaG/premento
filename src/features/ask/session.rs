@@ -1,15 +1,16 @@
 //! The Ask tab: an interactive Claude Code / Codex session in a folder holding the PR and its
 //! review, so the reviewer can ask questions about it. It runs in the embedded terminal
-//! (`terminal.rs`) or, on request, in a separate terminal app.
+//! (`features/terminal`) or, on request, in a separate terminal app.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, anyhow};
 
-use crate::analysis::StoredAnalysis;
-use crate::config::{ProviderConfig, app_cache_dir};
-use crate::github::{self, PullRequest};
+use crate::core::paths::app_cache_dir;
+use crate::features::analysis::StoredAnalysis;
+use crate::features::providers::ProviderConfig;
+use crate::features::pull_requests::{PullRequest, github};
 
 /// An Ask session ready to start: the folder holding the PR and review, and the command to run.
 pub struct Session {

@@ -93,7 +93,7 @@ options automatically, as long as the provider's `args` were not edited.
 
 ## Risk score
 
-The LLM rates three dimensions, and PRemento computes the score from them (`RiskReview::compute` in `src/analysis.rs`):
+The LLM rates three dimensions, and PRemento computes the score from them (`RiskReview::compute` in `src/features/analysis/scoring.rs`):
 
 | Dimension | Values |
 |---|---|
@@ -114,25 +114,34 @@ The PR title, description, labels, branches, commits, changed files, the convers
 
 ## Service map
 
-The map of attraction-inc services and their main connections is defined in `src/service_map.rs`. It is based on `attraction-inc/workspace` (`ARCHITECTURE.md`, `docker-compose.yml`). When the PR is in attraction-inc, the map is sent to the LLM, which returns `service_impact`. The PR's own repo is always shown as directly impacted. PRs without an AI result use an estimate: the repo's service plus the services that call it.
+The map of attraction-inc services and their main connections is defined in `src/features/service_map/graph.rs`. It is based on `attraction-inc/workspace` (`ARCHITECTURE.md`, `docker-compose.yml`). When the PR is in attraction-inc, the map is sent to the LLM, which returns `service_impact`. The PR's own repo is always shown as directly impacted. PRs without an AI result use an estimate: the repo's service plus the services that call it.
 
-The full map is shown when no PR is selected, and every attraction-inc PR in the list shows the services it impacts. Update `NODES`/`EDGES` in `src/service_map.rs` when the architecture changes.
+The full map is shown when no PR is selected, and every attraction-inc PR in the list shows the services it impacts. Update `NODES`/`EDGES` in `src/features/service_map/graph.rs` when the architecture changes.
 
 ## Layout
 
+Code is grouped by feature. Each feature folder holds its data, logic, state and views. Shared code lives in `core/` and `ui/`.
+
 ```
 src/
-  main.rs      entry point + headless `analyze` command
-  app.rs       egui UI (PR list, controls, analysis tabs)
-  github.rs    gh CLI wrapper: PR search + PR context (diff, commits, discussion)
-  llm.rs       runs a provider CLI with timeout/cancel
-  ask.rs       Ask tab: writes the PR + review to a folder and builds the session command
-  terminal.rs  terminal emulator widget (alacritty_terminal + PTY) used by the Ask tab
-  analysis.rs  prompt, JSON schema, lenient parsing, disk cache
-  config.rs    providers & settings
-  service_map.rs  attraction-inc services, connections, repo mapping
-  map_view.rs  map rendering + impacted-services list
-  theme.rs     design system (palette, pills, cards, tabs)
+  main.rs                  entry point
+  cli.rs                   headless `analyze` command
+  app/                     app shell: holds each feature's state, routes background events, lays out the panels
+    mod.rs  messages.rs  top_bar.rs  details.rs (tabs)
+    snapshots.rs           offscreen UI snapshots + glyph check (tests), with demo_analysis.json
+  core/                    config.rs (settings), paths.rs (config/cache dirs), format.rs (relative times)
+  ui/                      design system: theme.rs (palette, style), widgets.rs (pills, cards, tabs),
+                           blocks.rs (stat tiles, list cards, callouts, banners), icon.rs
+  features/
+    pull_requests/         model.rs, github.rs (gh CLI: PR search + context), state.rs (list, filter,
+                           selection), list_view.rs (sidebar), header.rs
+    analysis/              model.rs, scoring.rs (risk score), prompt.rs (prompt, schema, parsing),
+                           cache.rs, state.rs (running jobs + results), views/ (action bar + one file per tab)
+    ask/                   session.rs (prepares the PR folder + command), state.rs, view.rs (Ask tab)
+    providers/             config.rs (provider settings + defaults), runner.rs (runs a CLI with
+                           timeout/cancel), picker.rs (tool + model pickers)
+    service_map/           graph.rs (services + connections), impact.rs (impact + prompt), view.rs (map)
+    terminal/              terminal emulator widget (alacritty_terminal + PTY): mod.rs, input.rs, paint.rs, palette.rs
 ```
 
 ## UI snapshots

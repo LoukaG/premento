@@ -1,0 +1,135 @@
+{
+  "summary": "Introduces refresh-token rotation: every refresh issues a new token and invalidates the previous one. If a revoked token is presented again, the whole token family is revoked to contain stolen tokens. Adds a token_family column and a background job that prunes expired families.",
+  "risk": {
+    "complexity": {
+      "score": 7,
+      "reason": "Token rotation with reuse detection, a schema migration on a hot table and a new background job; concurrent refreshes need careful transaction handling."
+    },
+    "worst_case": {
+      "tier": "system_wide",
+      "scenario": "A bug in rotation or reuse detection logs every customer out, or silently weakens session security."
+    },
+    "audience": {
+      "facing": "customer",
+      "reason": "The refresh endpoint is called by the public website and mobile apps for every signed-in customer."
+    },
+    "rationale": "Touches the authentication hot path and changes the database schema. A bug here either logs every user out or silently weakens session security. Concurrency between parallel refresh requests from the same client is not obviously handled.",
+    "recommended_review_depth": "Careful line-by-line review of the rotation logic plus a local test of two concurrent refreshes.",
+    "factors": [
+      {
+        "area": "Race between concurrent refreshes",
+        "severity": "critical",
+        "description": "Two tabs refreshing at once will both present the same token; the second is treated as reuse and revokes the family, logging the user out.",
+        "files": [
+          "src/auth/refresh.rs"
+        ],
+        "mitigation": "Ask for a short grace window or row-level lock on the token row."
+      },
+      {
+        "area": "Migration on a large table",
+        "severity": "high",
+        "description": "Adding a NOT NULL column with a default to `sessions` rewrites the table on older Postgres versions.",
+        "files": [
+          "migrations/0042_token_family.sql"
+        ],
+        "mitigation": "Confirm the production Postgres version or split into add-nullable + backfill."
+      },
+      {
+        "area": "Pruning job deletes by created_at",
+        "severity": "medium",
+        "description": "Families are pruned by creation date rather than last use, which may delete active long-lived sessions.",
+        "files": [
+          "src/jobs/prune_tokens.rs"
+        ],
+        "mitigation": "Prune on last_used_at instead."
+      }
+    ]
+  },
+  "intent": {
+    "stated_intent": "Harden session security by rotating refresh tokens and detecting token reuse, as required by the security audit.",
+    "inferred_intent": "Implements rotation and family revocation, and also changes the session TTL from 30 to 14 days, which is not mentioned in the description.",
+    "alignment": "Mostly aligned. The TTL change is scope creep and has user-facing impact; it should be called out or split out.",
+    "decisions": [
+      {
+        "decision": "Revoke the entire token family on reuse",
+        "rationale": "Follows the OAuth 2.0 Security BCP recommendation (quoted in the description).",
+        "alternatives": "Revoke only the reused token; alert without revoking.",
+        "source": "description"
+      },
+      {
+        "decision": "Store token hashes instead of raw tokens",
+        "rationale": "Inferred: limits damage if the sessions table leaks.",
+        "alternatives": "Encrypt tokens at rest.",
+        "source": "code (inferred)"
+      }
+    ],
+    "open_questions": [
+      "How are concurrent refreshes from multiple tabs handled?",
+      "Was the TTL change from 30 to 14 days intentional?",
+      "Is there a rollout plan for already-issued tokens?"
+    ]
+  },
+  "impact": {
+    "affected_components": [
+      {
+        "name": "Auth service",
+        "description": "Refresh endpoint behaviour changes; clients must store the new token on every refresh."
+      },
+      {
+        "name": "Web & mobile clients",
+        "description": "Must replace the stored refresh token after each call."
+      }
+    ],
+    "breaking_changes": [
+      "Clients that reuse the old refresh token will be logged out.",
+      "Session lifetime reduced from 30 to 14 days."
+    ],
+    "downstream_effects": [
+      "Mobile app versions older than 5.2 do not persist rotated tokens."
+    ],
+    "data_and_migrations": [
+      "New token_family column on sessions; backfill required."
+    ],
+    "security": [
+      "Detects and contains stolen refresh tokens."
+    ],
+    "performance": [],
+    "test_coverage": "Unit tests cover rotation and reuse, but there is no test for concurrent refreshes or for the migration.",
+    "suggested_tests": [
+      "Two concurrent refreshes with the same token",
+      "Migration on a copy of production data"
+    ]
+  },
+  "service_impact": [
+    {
+      "service": "fibra",
+      "level": "direct",
+      "severity": "high",
+      "reason": "Refresh endpoint and token storage change in the public API."
+    },
+    {
+      "service": "backend",
+      "level": "indirect",
+      "severity": "medium",
+      "reason": "Customer authentication relayed by Fibra now expects rotated tokens."
+    },
+    {
+      "service": "website",
+      "level": "indirect",
+      "severity": "high",
+      "reason": "Must store the new refresh token after every call or users get logged out."
+    },
+    {
+      "service": "frontend",
+      "level": "indirect",
+      "severity": "low",
+      "reason": "Product modal reads the catalogue with the same session."
+    },
+    {
+      "service": "distributors",
+      "level": "indirect",
+      "severity": "low",
+      "reason": "PromoStandards credentials unaffected; listed for awareness."
+    }
+  ]
+}

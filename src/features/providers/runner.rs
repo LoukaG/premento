@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 
-use crate::config::ProviderConfig;
+use super::ProviderConfig;
 
 pub fn is_available(provider: &ProviderConfig) -> bool {
     which::which(&provider.command).is_ok()

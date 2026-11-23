@@ -7,9 +7,11 @@ use eframe::egui::{
     epaint::CubicBezierShape, pos2, vec2,
 };
 
-use crate::analysis::ServiceImpact;
-use crate::service_map::{self, EDGES, Kind, LANES, NODES, Node};
-use crate::theme::{accent_card, body, muted, pal, pill, section_title, severity_color, severity_rank};
+use super::graph::{self, EDGES, Kind, LANES, NODES, Node};
+use super::impact;
+use crate::features::analysis::ServiceImpact;
+use crate::ui::theme::{pal, severity_color, severity_rank};
+use crate::ui::widgets::{accent_card, body, muted, pill, section_title};
 
 const LANE_H: f32 = 84.0;
 const BOX_H: f32 = 42.0;
@@ -58,7 +60,7 @@ pub fn draw(ui: &mut Ui, impacts: &[ServiceImpact]) {
         .collect();
 
     // Edges: faint ones first, highlighted ones on top.
-    let mut edges: Vec<(u8, &service_map::Edge)> = EDGES
+    let mut edges: Vec<(u8, &graph::Edge)> = EDGES
         .iter()
         .map(|e| {
             let n = by_id.contains_key(e.from) as u8 + by_id.contains_key(e.to) as u8;
@@ -69,7 +71,7 @@ pub fn draw(ui: &mut Ui, impacts: &[ServiceImpact]) {
     for (n_impacted, e) in edges {
         let (a, b) = (rects[e.from], rects[e.to]);
         let reverse = EDGES.iter().any(|r| r.from == e.to && r.to == e.from);
-        let package = service_map::node(e.to).is_some_and(|n| n.kind == Kind::Package);
+        let package = impact::node(e.to).is_some_and(|n| n.kind == Kind::Package);
         let (color, width) = match (highlighting, n_impacted) {
             (false, _) if package => (p.muted.gamma_multiply(0.3), 1.0),
             (false, _) => (p.muted.gamma_multiply(0.55), 1.2),
@@ -253,7 +255,7 @@ fn draw_node(
         let calls: Vec<String> = EDGES
             .iter()
             .filter(|e| e.from == n.id)
-            .map(|e| format!("{} ({})", service_map::node(e.to).map_or(e.to, |t| t.name), e.label))
+            .map(|e| format!("{} ({})", impact::node(e.to).map_or(e.to, |t| t.name), e.label))
             .collect();
         if !calls.is_empty() {
             ui.separator();
@@ -299,7 +301,7 @@ pub fn impact_list(ui: &mut Ui, impacts: &[ServiceImpact]) {
         ui.label(muted(ui, "No service impact identified."));
     }
     for i in items {
-        let Some(n) = service_map::node(&i.service) else { continue };
+        let Some(n) = impact::node(&i.service) else { continue };
         let c = impact_color(i);
         accent_card(ui, c, |ui| {
             ui.horizontal(|ui| {
@@ -313,4 +315,30 @@ pub fn impact_list(ui: &mut Ui, impacts: &[ServiceImpact]) {
             body(ui, &i.reason);
         });
     }
+}
+
+/// Compact line of impacted services for a PR card: direct ones first.
+pub fn service_chips(ui: &mut egui::Ui, impacts: &[ServiceImpact]) {
+    let p = pal(ui);
+    let mut sorted: Vec<&ServiceImpact> = impacts.iter().collect();
+    sorted.sort_by_key(|i| !i.level.eq_ignore_ascii_case("direct"));
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.label(RichText::new("Impacts  ").size(11.0).color(p.faint));
+        const MAX: usize = 3;
+        let names: Vec<(&str, bool)> = sorted
+            .iter()
+            .filter_map(|i| impact::node(&i.service).map(|n| (n.name, i.level.eq_ignore_ascii_case("direct"))))
+            .collect();
+        for (k, (name, direct)) in names.iter().take(MAX).enumerate() {
+            if k > 0 {
+                ui.label(RichText::new("  ·  ").size(11.0).color(p.faint));
+            }
+            let text = RichText::new(*name).size(11.0);
+            ui.label(if *direct { text.color(p.accent_text).strong() } else { text.color(p.muted) });
+        }
+        if names.len() > MAX {
+            ui.label(RichText::new(format!("  +{}", names.len() - MAX)).size(11.0).color(p.faint));
+        }
+    });
 }
