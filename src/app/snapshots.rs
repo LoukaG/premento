@@ -14,6 +14,7 @@ use crate::features::analysis::{Analysis, StoredAnalysis};
 use crate::features::ask::session;
 use crate::features::ask::state::AskState;
 use crate::features::pull_requests::{PullRequest, Role};
+use crate::features::related::model::{Link, LinkKind, OutsidePr, PrState, Source, StoredRelations};
 use crate::features::terminal::Terminal;
 use crate::ui::theme;
 
@@ -43,6 +44,7 @@ const UI_SOURCES: &[&str] = &[
     include_str!("../features/pull_requests/state.rs"),
     include_str!("../features/pull_requests/header.rs"),
     include_str!("../features/pull_requests/list_view.rs"),
+    include_str!("../features/related/view.rs"),
     include_str!("../features/service_map/graph.rs"),
     include_str!("../features/service_map/impact.rs"),
     include_str!("../features/service_map/view.rs"),
@@ -64,7 +66,7 @@ fn demo_app() -> PRementoApp {
         updated_at: (now - chrono::Duration::hours(hours)).to_rfc3339(),
         labels: if n == 412 { vec!["auth".into(), "backend".into()] } else { vec![] },
         roles,
-        head_sha: None,
+        ..Default::default()
     };
     app.prs.prs = vec![
         pr("attraction-inc/fibra", 412, "Rotate refresh tokens on every use and revoke reused tokens", "mira", 2, vec![Role::ReviewRequested], false),
@@ -72,7 +74,33 @@ fn demo_app() -> PRementoApp {
         pr("attraction-inc/workspace", 77, "Bump Node to 24 LTS across services", "sam", 26, vec![Role::Assignee], false),
         pr("attraction-inc/fibra", 415, "WIP: batch webhook deliveries", "lee", 50, vec![Role::ReviewRequested], true),
         pr("octo-org/mobile", 903, "Fix crash when opening deep links while logged out", "ana", 72, vec![Role::Reviewed], false),
+        pr("octo-org/mobile", 907, "Ask to log in when a deep link needs an account", "ana", 80, vec![Role::ReviewRequested], false),
     ];
+    // A stack across two repos, built on a merged PR outside the list, and an AI suggestion.
+    let link = |from: &str, to: &str, kind, source, reason: Option<&str>| Link {
+        from: from.into(),
+        to: to.into(),
+        kind,
+        source,
+        reason: reason.map(Into::into),
+    };
+    app.relations.body_links = vec![
+        link("attraction-inc/fibra#412", "attraction-inc/fibra#410", LinkKind::DependsOn, Source::Body, None),
+        link("attraction-inc/studio-frontend#1288", "attraction-inc/fibra#412", LinkKind::DependsOn, Source::Body, None),
+        link("attraction-inc/fibra#415", "attraction-inc/fibra#412", LinkKind::DependsOn, Source::Body, None),
+    ];
+    app.relations.outside.insert("attraction-inc/fibra#410".into(), OutsidePr {
+        key: "attraction-inc/fibra#410".into(),
+        title: "Add token family table and migration".into(),
+        url: "https://github.com/attraction-inc/fibra/pull/410".into(),
+        state: PrState::Merged,
+    });
+    app.relations.ai = Some(StoredRelations {
+        fingerprint: String::new(),
+        provider: "Claude Code".into(),
+        created_at: (now - chrono::Duration::minutes(30)).timestamp(),
+        links: vec![link("octo-org/mobile#907", "octo-org/mobile#903", LinkKind::DependsOn, Source::Ai, Some("Login prompt reuses the logged-out deep link fix"))],
+    });
     let analysis: Analysis = serde_json::from_str(DEMO).unwrap();
     let mut stored = |key: &str, complexity: f32, tier: &str, facing: &str| {
         let mut a = analysis.clone();
@@ -175,5 +203,11 @@ fn render_screens() {
         h.state_mut().tab = Tab::Overview;
         h.run_steps(4);
         h.render().unwrap().save(format!("{dir}/{tname}-outdated.png")).unwrap();
+        // Groups under a filter: members it hides stay as slim rows, plus the AI's suggestion.
+        h.state_mut().prs.filter = crate::features::pull_requests::Filter::Reviewer;
+        h.state_mut().prs.selected = Some("octo-org/mobile#907".into());
+        h.run_steps(4);
+        h.render().unwrap().save(format!("{dir}/{tname}-related-filtered.png")).unwrap();
+        h.state_mut().prs.filter = crate::features::pull_requests::Filter::All;
     }
 }

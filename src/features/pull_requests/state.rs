@@ -5,12 +5,22 @@ use chrono::{DateTime, Local};
 
 use super::{PullRequest, Role, github};
 use crate::features::analysis::{StoredAnalysis, cache};
+use crate::features::related;
 
-/// Result of a refresh, with the cached analyses of the PRs found.
+/// Result of a refresh, with the cached analyses of the PRs found and their links.
 pub struct Loaded {
     user: Option<String>,
     prs: Vec<PullRequest>,
     cached: Vec<(String, StoredAnalysis)>,
+    related: related::state::Fetched,
+}
+
+/// What a finished refresh hands to the other features.
+#[derive(Default)]
+pub struct Found {
+    pub analyses: Vec<(String, StoredAnalysis)>,
+    /// `None` when the refresh failed.
+    pub related: Option<related::state::Fetched>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -64,14 +74,15 @@ impl PrList {
                     .iter()
                     .filter_map(|pr| cache::load_cached(&pr.key()).map(|a| (pr.key(), a)))
                     .collect();
-                Ok(Loaded { user, prs, cached })
+                let related = related::state::fetch(&prs);
+                Ok(Loaded { user, prs, cached, related })
             })();
             emit(result);
         });
     }
 
-    /// Applies a finished refresh and returns the cached analyses it found.
-    pub fn on_loaded(&mut self, result: Result<Loaded>) -> Vec<(String, StoredAnalysis)> {
+    /// Applies a finished refresh and returns what it found for the other features.
+    pub fn on_loaded(&mut self, result: Result<Loaded>) -> Found {
         self.loading = false;
         match result {
             Ok(loaded) => {
@@ -80,11 +91,11 @@ impl PrList {
                 }
                 self.prs = loaded.prs;
                 self.last_refresh = Some(Local::now());
-                loaded.cached
+                Found { analyses: loaded.cached, related: Some(loaded.related) }
             }
             Err(e) => {
                 self.error = Some(format!("{e:#}"));
-                vec![]
+                Found::default()
             }
         }
     }

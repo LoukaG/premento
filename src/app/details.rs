@@ -6,6 +6,7 @@ use super::PRementoApp;
 use crate::features::analysis::views::{self, action_bar};
 use crate::features::ask::{self, Launch};
 use crate::features::pull_requests::header;
+use crate::features::related;
 use crate::features::service_map;
 use crate::ui::blocks::banner;
 use crate::ui::theme::pal;
@@ -52,6 +53,13 @@ impl PRementoApp {
         let key = pr.key();
 
         header::show(ui, &pr);
+        if let Some(group) = self.relations.group_of(&key) {
+            ui.add_space(4.0);
+            let prs = &self.prs;
+            if let Some(k) = related::view::header_line(ui, group, &key, &|k| prs.find(k).map(|p| p.title.clone())) {
+                self.prs.selected = Some(k);
+            }
+        }
         ui.add_space(10.0);
 
         if action_bar::show(ui, &mut self.picker, &self.analyses, &key, pr.head_sha.as_deref()) {

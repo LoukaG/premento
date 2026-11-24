@@ -17,7 +17,7 @@ impl Role {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PullRequest {
     pub repo: String,
     pub number: u64,
@@ -30,6 +30,13 @@ pub struct PullRequest {
     pub roles: Vec<Role>,
     /// The PR's current head commit; `None` when GitHub could not be asked for it.
     pub head_sha: Option<String>,
+    /// The description; empty when GitHub could not be asked for it.
+    pub body: String,
+    /// Branch the PR merges into, and its own branch.
+    pub base_ref: Option<String>,
+    pub head_ref: Option<String>,
+    /// Issues the PR closes when merged, as `owner/repo#N`.
+    pub closes: Vec<String>,
 }
 
 impl PullRequest {

@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::model::{PullRequest, Role};
+use crate::features::related::{OutsidePr, PrState};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,7 +97,7 @@ pub fn fetch_prs(limit: u32) -> Result<Vec<PullRequest>> {
                     updated_at: item.updated_at,
                     labels: item.labels.into_iter().map(|l| l.name).collect(),
                     roles: vec![],
-                    head_sha: None,
+                    ..Default::default()
                 });
             if !pr.roles.contains(&role) {
                 pr.roles.push(role);
@@ -109,46 +110,98 @@ pub fn fetch_prs(limit: u32) -> Result<Vec<PullRequest>> {
         pr.roles.sort();
     }
     prs.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-    fetch_head_shas(&mut prs);
+    fetch_details(&mut prs);
     Ok(prs)
 }
 
-/// Fills in each PR's head commit, which `gh search prs` does not return, with one GraphQL
-/// query per 100 PRs. Best effort: a PR whose head cannot be read keeps `None`.
-fn fetch_head_shas(prs: &mut [PullRequest]) {
+/// Fills in what `gh search prs` does not return (head commit, branches, description, closed
+/// issues) with one GraphQL query per 100 PRs. Best effort: a PR that cannot be read keeps its
+/// defaults.
+fn fetch_details(prs: &mut [PullRequest]) {
     for chunk in prs.chunks_mut(100) {
-        let Some(query) = head_query(chunk) else { continue };
-        // Not `gh()`: when some repositories cannot be read, gh exits non-zero but still prints
-        // the data of the others.
-        let Ok(out) = Command::new("gh").args(["api", "graphql", "-f", &format!("query={query}")]).output() else {
-            return;
+        let fields = "headRefOid baseRefName headRefName body \
+            closingIssuesReferences(first: 10) { nodes { number repository { nameWithOwner } } }";
+        let Some(query) = batch_query(chunk.iter().map(|pr| (pr.repo.as_str(), pr.number)), "pullRequest", fields)
+        else {
+            continue;
         };
-        let Ok(v) = serde_json::from_slice::<Value>(&out.stdout) else { continue };
+        let Some(v) = graphql(&query) else { return };
         for (i, pr) in chunk.iter_mut().enumerate() {
-            pr.head_sha = v["data"][format!("p{i}")]["pullRequest"]["headRefOid"]
-                .as_str()
-                .filter(|sha| !sha.is_empty())
-                .map(str::to_owned);
+            let p = &v["data"][format!("p{i}")]["pullRequest"];
+            let text = |field: &str| p[field].as_str().filter(|s| !s.is_empty()).map(str::to_owned);
+            pr.head_sha = text("headRefOid");
+            pr.base_ref = text("baseRefName");
+            pr.head_ref = text("headRefName");
+            pr.body = text("body").unwrap_or_default();
+            pr.closes = p["closingIssuesReferences"]["nodes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|n| Some(format!("{}#{}", n["repository"]["nameWithOwner"].as_str()?, n["number"].as_u64()?)))
+                .collect();
         }
     }
 }
 
-/// `query { p0: repository(owner: "o", name: "r") { pullRequest(number: 1) { headRefOid } } ... }`,
-/// with `p{i}` for the i-th PR. `None` when no PR has a usable repository name.
-fn head_query(prs: &[PullRequest]) -> Option<String> {
-    let safe = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
-    let fields: Vec<String> = prs
+/// The PRs behind `keys` (`owner/repo#N`), which are not in the user's list. Keys that are
+/// issues, or that cannot be read, are left out. Best effort.
+pub fn fetch_outside(keys: &[String]) -> Vec<OutsidePr> {
+    let parsed: Vec<(&String, &str, u64)> = keys
         .iter()
+        .filter_map(|k| {
+            let (repo, n) = k.rsplit_once('#')?;
+            Some((k, repo, n.parse().ok()?))
+        })
+        .collect();
+    let mut found = vec![];
+    for chunk in parsed.chunks(100) {
+        let fields = "__typename ... on PullRequest { title url state }";
+        let Some(query) = batch_query(chunk.iter().map(|&(_, repo, n)| (repo, n)), "issueOrPullRequest", fields) else {
+            continue;
+        };
+        let Some(v) = graphql(&query) else { break };
+        for (i, &(key, _, _)) in chunk.iter().enumerate() {
+            let p = &v["data"][format!("p{i}")]["issueOrPullRequest"];
+            if p["__typename"].as_str() != Some("PullRequest") {
+                continue;
+            }
+            let state = match p["state"].as_str() {
+                Some("MERGED") => PrState::Merged,
+                Some("CLOSED") => PrState::Closed,
+                _ => PrState::Open,
+            };
+            found.push(OutsidePr {
+                key: key.clone(),
+                title: p["title"].as_str().unwrap_or_default().to_owned(),
+                url: p["url"].as_str().unwrap_or_default().to_owned(),
+                state,
+            });
+        }
+    }
+    found
+}
+
+/// Runs a GraphQL query. Not `gh()`: when some repositories cannot be read, gh exits non-zero
+/// but still prints the data of the others. `None` when gh cannot run or prints no JSON.
+fn graphql(query: &str) -> Option<Value> {
+    let out = Command::new("gh").args(["api", "graphql", "-f", &format!("query={query}")]).output().ok()?;
+    serde_json::from_slice(&out.stdout).ok()
+}
+
+/// `query { p0: repository(owner: "o", name: "r") { <field>(number: 1) { <fields> } } ... }`,
+/// with `p{i}` for the i-th item. `None` when no item has a usable repository name.
+fn batch_query<'a>(items: impl Iterator<Item = (&'a str, u64)>, field: &str, fields: &str) -> Option<String> {
+    let safe = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+    let parts: Vec<String> = items
         .enumerate()
-        .filter_map(|(i, pr)| {
-            let (owner, name) = pr.repo.split_once('/').filter(|(o, n)| safe(o) && safe(n))?;
+        .filter_map(|(i, (repo, number))| {
+            let (owner, name) = repo.split_once('/').filter(|(o, n)| safe(o) && safe(n))?;
             Some(format!(
-                r#"p{i}: repository(owner: "{owner}", name: "{name}") {{ pullRequest(number: {}) {{ headRefOid }} }}"#,
-                pr.number
+                r#"p{i}: repository(owner: "{owner}", name: "{name}") {{ {field}(number: {number}) {{ {fields} }} }}"#
             ))
         })
         .collect();
-    (!fields.is_empty()).then(|| format!("query {{ {} }}", fields.join(" ")))
+    (!parts.is_empty()).then(|| format!("query {{ {} }}", parts.join(" ")))
 }
 
 /// Everything the LLM needs to know about a PR, rendered as a single text document.
@@ -293,28 +346,14 @@ fn truncate(text: &str, max: usize) -> String {
 mod tests {
     use super::*;
 
-    fn pr(repo: &str, number: u64) -> PullRequest {
-        PullRequest {
-            repo: repo.into(),
-            number,
-            title: String::new(),
-            url: String::new(),
-            author: String::new(),
-            is_draft: false,
-            updated_at: String::new(),
-            labels: vec![],
-            roles: vec![],
-            head_sha: None,
-        }
-    }
-
     #[test]
-    fn head_query_aliases_by_position_and_skips_odd_repo_names() {
-        let q = head_query(&[pr("o/a", 1), pr("o/\"x", 2), pr("o/b.c", 3)]).unwrap();
+    fn batch_query_aliases_by_position_and_skips_odd_repo_names() {
+        let items = [("o/a", 1), ("o/\"x", 2), ("o/b.c", 3)];
+        let q = batch_query(items.into_iter(), "pullRequest", "headRefOid").unwrap();
         assert_eq!(
             q,
             r#"query { p0: repository(owner: "o", name: "a") { pullRequest(number: 1) { headRefOid } } p2: repository(owner: "o", name: "b.c") { pullRequest(number: 3) { headRefOid } } }"#
         );
-        assert!(head_query(&[pr("no-slash", 1)]).is_none());
+        assert!(batch_query([("no-slash", 1)].into_iter(), "pullRequest", "headRefOid").is_none());
     }
 }

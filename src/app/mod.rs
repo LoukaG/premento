@@ -21,6 +21,7 @@ use crate::features::analysis::{Analyses, StoredAnalysis};
 use crate::features::ask::AskSessions;
 use crate::features::providers::ProviderPicker;
 use crate::features::pull_requests::{PrList, PullRequest, list_view};
+use crate::features::related::Relations;
 use crate::ui::theme::{self, pal};
 
 pub struct PRementoApp {
@@ -31,6 +32,7 @@ pub struct PRementoApp {
     prs: PrList,
     analyses: Analyses,
     asks: AskSessions,
+    relations: Relations,
     pub tab: Tab,
 
     tx: Sender<Msg>,
@@ -57,6 +59,7 @@ impl PRementoApp {
             prs: PrList::default(),
             analyses: Analyses::default(),
             asks: AskSessions::default(),
+            relations: Relations::default(),
             tab: Tab::Overview,
             tx,
             rx,
@@ -84,6 +87,19 @@ impl PRementoApp {
         self.analyses.start(pr, self.picker.selection(), self.config.max_diff_chars, timeout, emit);
     }
 
+    /// Asks the picked provider which listed PRs belong together, or cancels that.
+    fn start_relations(&mut self, ctx: &egui::Context) {
+        let emit = self.emitter(ctx, Msg::Related);
+        let timeout = Duration::from_secs(self.config.timeout_secs);
+        let briefs = self
+            .analyses
+            .results
+            .iter()
+            .filter_map(|(k, s)| Some((k.clone(), s.analysis.as_ref()?.brief.what.clone())))
+            .collect();
+        self.relations.start_or_cancel(&self.prs.prs, briefs, self.picker.selection(), timeout, emit);
+    }
+
     fn start_ask(&mut self, ctx: &egui::Context, pr: &PullRequest, review: &StoredAnalysis, external: bool) {
         let emit = self.emitter(ctx, Msg::Ask);
         self.asks.start(self.picker.selection(), pr, review, external, self.config.max_diff_chars, emit);
@@ -95,7 +111,8 @@ impl eframe::App for PRementoApp {
         let ctx = ui.ctx().clone();
         self.handle_messages(&ctx);
         self.asks.pump(&ctx);
-        if !self.analyses.jobs.is_empty() {
+        self.relations.update(&self.prs.prs);
+        if !self.analyses.jobs.is_empty() || self.relations.job.is_some() {
             ui.ctx().request_repaint_after(Duration::from_millis(500));
         }
         let p = pal(ui);
@@ -117,7 +134,11 @@ impl eframe::App for PRementoApp {
                     .fill(p.sidebar)
                     .inner_margin(Margin::symmetric(12, 14)),
             )
-            .show(ui, |ui| list_view::show(ui, &mut self.prs, &self.analyses));
+            .show(ui, |ui| {
+                if list_view::show(ui, &mut self.prs, &self.analyses, &self.relations) {
+                    self.start_relations(ui.ctx());
+                }
+            });
 
         egui::CentralPanel::default()
             .frame(
