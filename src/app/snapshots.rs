@@ -14,11 +14,13 @@ use crate::features::analysis::{Analysis, StoredAnalysis};
 use crate::features::ask::session;
 use crate::features::ask::state::AskState;
 use crate::features::pull_requests::{PullRequest, Role};
+use crate::features::service_map::ServiceMap;
 use crate::features::related::model::{Link, LinkKind, OutsidePr, PrState, Source, StoredRelations};
 use crate::features::terminal::Terminal;
 use crate::ui::theme;
 
 const DEMO: &str = include_str!("demo_analysis.json");
+const DEMO_MAP: &str = include_str!("demo_service_map.json");
 
 /// Every file that draws UI text; checked by [`all_ui_glyphs_exist`].
 const UI_SOURCES: &[&str] = &[
@@ -47,6 +49,8 @@ const UI_SOURCES: &[&str] = &[
     include_str!("../features/related/view.rs"),
     include_str!("../features/service_map/graph.rs"),
     include_str!("../features/service_map/impact.rs"),
+    include_str!("../features/service_map/page.rs"),
+    include_str!("../features/service_map/state.rs"),
     include_str!("../features/service_map/view.rs"),
 ];
 
@@ -54,8 +58,12 @@ const UI_SOURCES: &[&str] = &[
 fn demo_app() -> PRementoApp {
     let mut app = PRementoApp::build(Config::default(), None);
     app.prs.user = Some("octocat".into());
+
     app.prs.last_refresh = Some(Local::now());
     let now = Utc::now();
+    let mut map: ServiceMap = serde_json::from_str(DEMO_MAP).unwrap();
+    map.created_at = (now - chrono::Duration::days(2)).timestamp();
+    app.maps.maps = vec![map];
     let pr = |repo: &str, n: u64, title: &str, author: &str, hours: i64, roles: Vec<Role>, draft: bool| PullRequest {
         repo: repo.into(),
         number: n,
@@ -175,7 +183,11 @@ fn render_screens() {
         h.state_mut().prs.selected = None;
         h.run_steps(4);
         h.render().unwrap().save(format!("{dir}/{tname}-empty.png")).unwrap();
-        // Non attraction-inc PR keeps the generic Impact tab.
+        let maps = std::mem::take(&mut h.state_mut().maps.maps);
+        h.run_steps(4);
+        h.render().unwrap().save(format!("{dir}/{tname}-no-maps.png")).unwrap();
+        h.state_mut().maps.maps = maps;
+        // A PR whose repo is on no map keeps the generic Impact tab.
         h.state_mut().prs.selected = Some("octo-org/mobile#903".into());
         h.state_mut().tab = Tab::Impact;
         h.run_steps(4);

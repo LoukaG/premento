@@ -11,9 +11,9 @@ pub struct Analysis {
     pub summary: String,
     pub risk: RiskReview,
     pub intent: IntentLog,
-    /// Generic impact analysis (PRs outside attraction-inc).
+    /// Generic impact analysis (PRs whose repo is on no service map).
     pub impact: ImpactAnalysis,
-    /// Impact on the attraction-inc service map (attraction-inc PRs).
+    /// Impact on the service map that lists the PR's repo.
     pub service_impact: Vec<ServiceImpact>,
 }
 

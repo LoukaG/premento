@@ -42,8 +42,9 @@ pub fn analyze(config: &Config, args: &[String]) -> Result<()> {
         model,
         &prompt::build_prompt(
             &ctx.text,
-            service_map::applies(repo)
-                .then(|| service_map::prompt_section(repo))
+            service_map::ServiceMaps::load()
+                .for_repo(repo)
+                .map(|m| service_map::prompt_section(m, repo))
                 .as_deref(),
         ),
         std::time::Duration::from_secs(config.timeout_secs),

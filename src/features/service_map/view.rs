@@ -1,4 +1,4 @@
-//! Renders the service map, optionally highlighting the services a PR impacts.
+//! Renders a service map, optionally highlighting the services a PR impacts.
 
 use std::collections::HashMap;
 
@@ -7,8 +7,7 @@ use eframe::egui::{
     epaint::CubicBezierShape, pos2, vec2,
 };
 
-use super::graph::{self, EDGES, Kind, LANES, NODES, Node};
-use super::impact;
+use super::graph::{Edge, Kind, LANES, Node, ServiceMap};
 use crate::features::analysis::ServiceImpact;
 use crate::ui::theme::{pal, severity_color, severity_rank};
 use crate::ui::widgets::{accent_card, body, muted, pill, section_title};
@@ -16,21 +15,82 @@ use crate::ui::widgets::{accent_card, body, muted, pill, section_title};
 const LANE_H: f32 = 84.0;
 const BOX_H: f32 = 42.0;
 const MARGIN: f32 = 14.0;
+const MIN_BOX_W: f32 = 96.0;
+const GAP: f32 = 14.0;
 
-/// Draws the map. With an empty `impacts`, every service is shown neutrally.
-pub fn draw(ui: &mut Ui, impacts: &[ServiceImpact]) {
+/// Where each node goes: its row among the lanes shown, and the x of its center in 0..1.
+pub struct Placement {
+    /// Indices in [`LANES`] of the lanes that hold nodes, top to bottom.
+    pub lanes: Vec<usize>,
+    pub pos: HashMap<String, (usize, f32)>,
+    /// Most nodes in one lane.
+    pub widest: usize,
+}
+
+/// Lanes come from the node kinds. Within a lane, nodes are ordered by the mean x of their
+/// neighbours in the lanes above (fewer crossing edges), then spread evenly.
+pub fn layout(map: &ServiceMap) -> Placement {
+    let lanes: Vec<usize> = (0..LANES.len()).filter(|l| map.nodes.iter().any(|n| n.kind.lane() == *l)).collect();
+    let total = map.nodes.len().max(1) as f32;
+    let mut pos: HashMap<String, (usize, f32)> = HashMap::new();
+    let mut widest = 1;
+    for (row, lane) in lanes.iter().enumerate() {
+        let mut nodes: Vec<(f32, &Node)> = map
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.kind.lane() == *lane)
+            .map(|(i, n)| {
+                let placed: Vec<f32> = map
+                    .edges
+                    .iter()
+                    .filter_map(|e| {
+                        let other = if e.from == n.id { &e.to } else if e.to == n.id { &e.from } else { return None };
+                        pos.get(other).map(|(_, x)| *x)
+                    })
+                    .collect();
+                let key = if placed.is_empty() {
+                    (i as f32 + 0.5) / total
+                } else {
+                    placed.iter().sum::<f32>() / placed.len() as f32
+                };
+                (key, n)
+            })
+            .collect();
+        nodes.sort_by(|a, b| a.0.total_cmp(&b.0));
+        widest = widest.max(nodes.len());
+        let count = nodes.len() as f32;
+        for (k, (_, n)) in nodes.iter().enumerate() {
+            pos.insert(n.id.clone(), (row, (k as f32 + 0.5) / count));
+        }
+    }
+    Placement { lanes, pos, widest }
+}
+
+/// Draws the map. With an empty `impacts`, every service is shown neutrally. Wide maps
+/// scroll sideways.
+pub fn draw(ui: &mut Ui, map: &ServiceMap, impacts: &[ServiceImpact]) {
+    egui::ScrollArea::horizontal()
+        .id_salt(("service-map", &map.id))
+        .auto_shrink([false, true])
+        .show(ui, |ui| draw_map(ui, map, impacts));
+}
+
+fn draw_map(ui: &mut Ui, map: &ServiceMap, impacts: &[ServiceImpact]) {
     let p = pal(ui);
     let dark = ui.visuals().dark_mode;
     let by_id: HashMap<&str, &ServiceImpact> =
         impacts.iter().map(|i| (i.service.as_str(), i)).collect();
     let highlighting = !by_id.is_empty();
+    let placement = layout(map);
 
-    let width = ui.available_width().max(600.0);
-    let (rect, _) = ui.allocate_exact_size(vec2(width, LANES.len() as f32 * LANE_H), Sense::hover());
+    let needed = 2.0 * MARGIN + placement.widest as f32 * (MIN_BOX_W + GAP);
+    let width = ui.available_width().max(600.0).max(needed);
+    let (rect, _) = ui.allocate_exact_size(vec2(width, placement.lanes.len() as f32 * LANE_H), Sense::hover());
     let painter = ui.painter_at(rect.expand(2.0));
 
     // Lanes
-    for (i, name) in LANES.iter().enumerate() {
+    for (i, lane) in placement.lanes.iter().enumerate() {
         let band = Rect::from_min_size(
             pos2(rect.left(), rect.top() + i as f32 * LANE_H),
             vec2(width, LANE_H),
@@ -41,37 +101,39 @@ pub fn draw(ui: &mut Ui, impacts: &[ServiceImpact]) {
         painter.text(
             band.left_top() + vec2(12.0, 8.0),
             Align2::LEFT_TOP,
-            name.to_uppercase(),
+            LANES[*lane].to_uppercase(),
             FontId::proportional(10.0),
             p.faint,
         );
     }
 
-    let box_w = (width / 7.6).clamp(96.0, 150.0);
-    let usable = width - 2.0 * MARGIN - box_w;
-    let max_col = NODES.iter().map(|n| n.col).fold(1.0, f32::max);
-    let rects: HashMap<&str, Rect> = NODES
+    let usable = width - 2.0 * MARGIN;
+    let box_w = (usable / placement.widest as f32 - GAP).clamp(MIN_BOX_W, 150.0);
+    let rects: HashMap<&str, Rect> = map
+        .nodes
         .iter()
-        .map(|n| {
-            let x = rect.left() + MARGIN + n.col / max_col * usable;
-            let y = rect.top() + n.lane as f32 * LANE_H + 28.0;
-            (n.id, Rect::from_min_size(pos2(x, y), vec2(box_w, BOX_H)))
+        .filter_map(|n| {
+            let (row, x) = placement.pos.get(&n.id)?;
+            let cx = rect.left() + MARGIN + x * usable;
+            let y = rect.top() + *row as f32 * LANE_H + 28.0;
+            Some((n.id.as_str(), Rect::from_min_size(pos2(cx - box_w / 2.0, y), vec2(box_w, BOX_H))))
         })
         .collect();
 
     // Edges: faint ones first, highlighted ones on top.
-    let mut edges: Vec<(u8, &graph::Edge)> = EDGES
+    let mut edges: Vec<(u8, &Edge)> = map
+        .edges
         .iter()
         .map(|e| {
-            let n = by_id.contains_key(e.from) as u8 + by_id.contains_key(e.to) as u8;
+            let n = by_id.contains_key(e.from.as_str()) as u8 + by_id.contains_key(e.to.as_str()) as u8;
             (n, e)
         })
         .collect();
     edges.sort_by_key(|(n, _)| *n);
     for (n_impacted, e) in edges {
-        let (a, b) = (rects[e.from], rects[e.to]);
-        let reverse = EDGES.iter().any(|r| r.from == e.to && r.to == e.from);
-        let package = impact::node(e.to).is_some_and(|n| n.kind == Kind::Package);
+        let (Some(a), Some(b)) = (rects.get(e.from.as_str()), rects.get(e.to.as_str())) else { continue };
+        let reverse = map.edges.iter().any(|r| r.from == e.to && r.to == e.from);
+        let package = map.node(&e.to).is_some_and(|n| n.kind == Kind::Package);
         let (color, width) = match (highlighting, n_impacted) {
             (false, _) if package => (p.muted.gamma_multiply(0.3), 1.0),
             (false, _) => (p.muted.gamma_multiply(0.55), 1.2),
@@ -79,14 +141,14 @@ pub fn draw(ui: &mut Ui, impacts: &[ServiceImpact]) {
             (true, 1) => (p.muted.gamma_multiply(0.45), 1.1),
             (true, _) => (p.border.gamma_multiply(0.6), 1.0),
         };
-        draw_edge(&painter, a, b, e.from < e.to, reverse, package, Stroke::new(width, color));
+        draw_edge(&painter, *a, *b, e.from < e.to, reverse, package, Stroke::new(width, color));
     }
 
     // Nodes
-    for n in NODES {
-        let r = rects[n.id];
-        let impact = by_id.get(n.id).copied();
-        draw_node(ui, &painter, n, r, impact, highlighting, dark);
+    for n in &map.nodes {
+        let Some(r) = rects.get(n.id.as_str()) else { continue };
+        let impact = by_id.get(n.id.as_str()).copied();
+        draw_node(ui, &painter, map, n, *r, impact, highlighting, dark);
     }
 }
 
@@ -163,9 +225,11 @@ fn arrow_head(painter: &egui::Painter, from: Pos2, tip: Pos2, color: Color32) {
     ));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_node(
     ui: &mut Ui,
     painter: &egui::Painter,
+    map: &ServiceMap,
     n: &Node,
     r: Rect,
     impact: Option<&ServiceImpact>,
@@ -209,14 +273,14 @@ fn draw_node(
     painter.text(
         r.center() - vec2(0.0, 7.0),
         Align2::CENTER_CENTER,
-        n.name,
+        &n.name,
         FontId::proportional(name_size),
         text,
     );
     let subtitle = match n.kind {
         Kind::External => "external".to_string(),
         Kind::Package => "package".to_string(),
-        _ => n.repos.first().copied().unwrap_or("").to_string(),
+        _ => n.repos.first().map(|r| r.rsplit('/').next().unwrap_or(r).to_string()).unwrap_or_default(),
     };
     painter.text(
         r.center() + vec2(0.0, 9.0),
@@ -236,11 +300,11 @@ fn draw_node(
         }
     }
 
-    let resp = ui.interact(r, ui.scope_id().with(("svc", n.id)), Sense::hover());
+    let resp = ui.interact(r, ui.scope_id().with(("svc", &n.id)), Sense::hover());
     resp.on_hover_ui(|ui| {
         ui.set_max_width(320.0);
-        ui.label(RichText::new(n.name).strong().color(p.text));
-        ui.label(muted(ui, n.description));
+        ui.label(RichText::new(&n.name).strong().color(p.text));
+        ui.label(muted(ui, &n.description));
         if !n.repos.is_empty() {
             ui.label(RichText::new(n.repos.join(", ")).monospace().size(11.0).color(p.muted));
         }
@@ -252,10 +316,11 @@ fn draw_node(
             });
             ui.label(RichText::new(&i.reason).color(p.text));
         }
-        let calls: Vec<String> = EDGES
+        let calls: Vec<String> = map
+            .edges
             .iter()
             .filter(|e| e.from == n.id)
-            .map(|e| format!("{} ({})", impact::node(e.to).map_or(e.to, |t| t.name), e.label))
+            .map(|e| format!("{} ({})", map.node(&e.to).map_or(e.to.as_str(), |t| t.name.as_str()), e.label))
             .collect();
         if !calls.is_empty() {
             ui.separator();
@@ -287,7 +352,7 @@ pub fn legend(ui: &mut Ui, estimated: bool) {
 }
 
 /// Cards listing each impacted service, direct first then by severity.
-pub fn impact_list(ui: &mut Ui, impacts: &[ServiceImpact]) {
+pub fn impact_list(ui: &mut Ui, map: &ServiceMap, impacts: &[ServiceImpact]) {
     let p = pal(ui);
     let mut items: Vec<&ServiceImpact> = impacts.iter().collect();
     items.sort_by_key(|i| {
@@ -301,11 +366,11 @@ pub fn impact_list(ui: &mut Ui, impacts: &[ServiceImpact]) {
         ui.label(muted(ui, "No service impact identified."));
     }
     for i in items {
-        let Some(n) = impact::node(&i.service) else { continue };
+        let Some(n) = map.node(&i.service) else { continue };
         let c = impact_color(i);
         accent_card(ui, c, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(n.name).size(15.0).strong().color(p.text));
+                ui.label(RichText::new(&n.name).size(15.0).strong().color(p.text));
                 ui.label(RichText::new(n.repos.join(", ")).monospace().size(11.0).color(p.faint));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     pill(ui, i.severity.to_uppercase(), c);
@@ -318,7 +383,7 @@ pub fn impact_list(ui: &mut Ui, impacts: &[ServiceImpact]) {
 }
 
 /// Compact line of impacted services for a PR card: direct ones first.
-pub fn service_chips(ui: &mut egui::Ui, impacts: &[ServiceImpact]) {
+pub fn service_chips(ui: &mut egui::Ui, map: &ServiceMap, impacts: &[ServiceImpact]) {
     let p = pal(ui);
     let mut sorted: Vec<&ServiceImpact> = impacts.iter().collect();
     sorted.sort_by_key(|i| !i.level.eq_ignore_ascii_case("direct"));
@@ -328,7 +393,7 @@ pub fn service_chips(ui: &mut egui::Ui, impacts: &[ServiceImpact]) {
         const MAX: usize = 3;
         let names: Vec<(&str, bool)> = sorted
             .iter()
-            .filter_map(|i| impact::node(&i.service).map(|n| (n.name, i.level.eq_ignore_ascii_case("direct"))))
+            .filter_map(|i| map.node(&i.service).map(|n| (n.name.as_str(), i.level.eq_ignore_ascii_case("direct"))))
             .collect();
         for (k, (name, direct)) in names.iter().take(MAX).enumerate() {
             if k > 0 {
@@ -341,4 +406,25 @@ pub fn service_chips(ui: &mut egui::Ui, impacts: &[ServiceImpact]) {
             ui.label(RichText::new(format!("  +{}", names.len() - MAX)).size(11.0).color(p.faint));
         }
     });
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::features::service_map::impact::tests::sample_map;
+
+    #[test]
+    fn layout_places_every_node_and_skips_empty_lanes() {
+        let map = sample_map();
+        let placement = layout(&map);
+        // Surface, Service, Data & external: the packages and tooling lanes are empty.
+        assert_eq!(placement.lanes, [0, 1, 2]);
+        assert_eq!(placement.pos.len(), map.nodes.len());
+        assert_eq!(placement.widest, 2);
+        assert_eq!(placement.pos["web"].0, 0);
+        assert_eq!(placement.pos["db"].0, 2);
+        assert_eq!(placement.pos["erp"].0, 2);
+        for (_, x) in placement.pos.values() {
+            assert!((0.0..=1.0).contains(x));
+        }
+    }
 }

@@ -51,7 +51,7 @@ Each analysis opens on an **Overview** tab: why the PR exists, what it decides a
 |---|---|
 | **Risk Review** | A [risk score](#risk-score) computed from complexity, worst case and audience, and up to three risk factors with severity and files |
 | **Intent & Decisions** | What the PR says it does vs. what the code actually does, whether they match, the design decisions taken (why, alternatives, source) and questions to ask the author |
-| **Service Map** (attraction-inc PRs) | The attraction-inc architecture as a map, with each impacted service highlighted as **direct** (its code or config changes) or **indirect** (affected through a connection), colored by severity |
+| **Service Map** (repos on a [service map](#service-map)) | The system's architecture as a map, with each impacted service highlighted as **direct** (its code or config changes) or **indirect** (affected through a connection), colored by severity |
 | **Impact Analysis** (other repos) | Affected components, breaking changes, downstream effects, data/migrations, security, performance, test coverage and suggested tests |
 | **Ask** | A terminal built into the tab, running Claude Code or Codex in a folder that holds the PR and its review |
 
@@ -208,18 +208,20 @@ Cached analyses are re-scored on load. Ones from before the three dimensions exi
 
 ## Service map
 
-The map of attraction-inc services and their main connections is defined in [`src/features/service_map/graph.rs`](src/features/service_map/graph.rs), based on `attraction-inc/workspace` (`ARCHITECTURE.md`, `docker-compose.yml`).
+Service maps are generated from a folder on your machine. With no PR selected, pick a tool and click **Generate from folder…**, then choose a folder that holds your repositories: a workspace with one git repo per subfolder works best, and a single repo works too.
 
-- When the PR is in attraction-inc, the map is sent to the LLM, which returns `service_impact`.
+- PRemento reads the folder (see [Privacy](#privacy-what-is-sent-to-the-llm)) and the selected tool returns a simplified map: services, apps, data stores, external systems, shared packages and tooling, with their main connections and the repos that hold each one.
+- Maps are saved as JSON in the config folder (`maps/` next to `config.toml`). You can keep several, one per folder. **Regenerate** maps the same folder again, and **Delete** removes the map.
+- A PR uses the first map with a service whose repos include the PR's repo name (compared without the owner, ignoring case). The map is sent to the LLM with the PR, which returns `service_impact`.
 - The PR's own repo is always shown as directly impacted.
-- PRs without an AI result use an estimate: the repo's service plus the services that call it.
-- The full map is shown when no PR is selected, and every attraction-inc PR in the list shows the services it impacts.
-
-Update `NODES` / `EDGES` in `graph.rs` when the architecture changes.
+- PRs without an AI result use an estimate: the repo's service plus the services that call it. Re-analyze a PR analyzed before its map existed to get the AI impact.
+- Every PR in the list whose repo is on a map shows the services it impacts. PRs from other repos keep the generic **Impact** tab.
 
 ## Privacy: what is sent to the LLM
 
 The PR title, description, labels, branches, commits, changed files, the conversation (comments, reviews and inline review comments) and the diff. The LLM runs in a temporary empty directory.
+
+When you generate a service map, PRemento sends the git remote of each repo in the folder, its top-level file listing, and the start of its README, ARCHITECTURE docs, compose files, manifests (`package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `Dockerfile`, …) and `.env.example`. Source files are listed, not read. The LLM still runs in a temporary empty directory, not in your folder.
 
 ## Development
 
@@ -245,7 +247,9 @@ src/
     ask/                   session.rs (prepares the PR folder + command), state.rs, view.rs (Ask tab)
     providers/             config.rs (provider settings + defaults), runner.rs (runs a CLI with
                            timeout/cancel), picker.rs (tool + model pickers)
-    service_map/           graph.rs (services + connections), impact.rs (impact + prompt), view.rs (map)
+    service_map/           graph.rs (map model), scan.rs (reads a folder), ai.rs (map prompt + parsing),
+                           store.rs (saved maps), state.rs (maps + generation job), impact.rs (impact +
+                           prompt), view.rs (layout + drawing), page.rs (Service maps page)
     terminal/              terminal emulator widget (alacritty_terminal + PTY): mod.rs, input.rs, paint.rs, palette.rs
 ```
 

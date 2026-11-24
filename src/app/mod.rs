@@ -8,6 +8,7 @@ mod top_bar;
 #[cfg(test)]
 mod snapshots;
 
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::Duration;
 
@@ -22,6 +23,7 @@ use crate::features::ask::AskSessions;
 use crate::features::providers::ProviderPicker;
 use crate::features::pull_requests::{PrList, PullRequest, list_view};
 use crate::features::related::Relations;
+use crate::features::service_map::{self, ServiceMaps};
 use crate::ui::theme::{self, pal};
 
 pub struct PRementoApp {
@@ -33,6 +35,7 @@ pub struct PRementoApp {
     analyses: Analyses,
     asks: AskSessions,
     relations: Relations,
+    maps: ServiceMaps,
     pub tab: Tab,
 
     tx: Sender<Msg>,
@@ -44,6 +47,7 @@ impl PRementoApp {
         theme::install(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
         let mut app = Self::build(config, config_error);
+        app.maps = ServiceMaps::load();
         app.refresh(&cc.egui_ctx);
         app
     }
@@ -60,6 +64,7 @@ impl PRementoApp {
             analyses: Analyses::default(),
             asks: AskSessions::default(),
             relations: Relations::default(),
+            maps: ServiceMaps::default(),
             tab: Tab::Overview,
             tx,
             rx,
@@ -84,7 +89,16 @@ impl PRementoApp {
     fn start_analysis(&mut self, ctx: &egui::Context, pr: &PullRequest) {
         let emit = self.emitter(ctx, Msg::Analysis);
         let timeout = Duration::from_secs(self.config.timeout_secs);
-        self.analyses.start(pr, self.picker.selection(), self.config.max_diff_chars, timeout, emit);
+        let map = self.maps.for_repo(&pr.repo).map(|m| service_map::prompt_section(m, &pr.repo));
+        self.analyses.start(pr, self.picker.selection(), map, self.config.max_diff_chars, timeout, emit);
+    }
+
+    /// Generates the service map of `folder` with the picked provider, or cancels the running
+    /// job when `folder` is `None`.
+    fn start_map(&mut self, ctx: &egui::Context, folder: Option<PathBuf>) {
+        let emit = self.emitter(ctx, Msg::Map);
+        let timeout = Duration::from_secs(self.config.timeout_secs);
+        self.maps.start_or_cancel(folder, self.picker.selection(), timeout, emit);
     }
 
     /// Asks the picked provider which listed PRs belong together, or cancels that.
@@ -112,7 +126,7 @@ impl eframe::App for PRementoApp {
         self.handle_messages(&ctx);
         self.asks.pump(&ctx);
         self.relations.update(&self.prs.prs);
-        if !self.analyses.jobs.is_empty() || self.relations.job.is_some() {
+        if !self.analyses.jobs.is_empty() || self.relations.job.is_some() || self.maps.job.is_some() {
             ui.ctx().request_repaint_after(Duration::from_millis(500));
         }
         let p = pal(ui);
@@ -135,7 +149,7 @@ impl eframe::App for PRementoApp {
                     .inner_margin(Margin::symmetric(12, 14)),
             )
             .show(ui, |ui| {
-                if list_view::show(ui, &mut self.prs, &self.analyses, &self.relations) {
+                if list_view::show(ui, &mut self.prs, &self.analyses, &self.relations, &self.maps) {
                     self.start_relations(ui.ctx());
                 }
             });

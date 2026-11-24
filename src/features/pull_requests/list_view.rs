@@ -6,12 +6,12 @@ use super::{Filter, PrList, PullRequest, Role};
 use crate::core::format::ago_str;
 use crate::features::analysis::Analyses;
 use crate::features::related::{self, Entry, Relations};
-use crate::features::service_map;
+use crate::features::service_map::{self, ServiceMaps};
 use crate::ui::theme::{OUTDATED, pal, severity_color};
 use crate::ui::widgets::{avatar, clickable_card, muted, paint_stripe, pill, segmented, solid_pill};
 
 /// Returns true when "Group related" was clicked.
-pub fn show(ui: &mut egui::Ui, prs: &mut PrList, analyses: &Analyses, relations: &Relations) -> bool {
+pub fn show(ui: &mut egui::Ui, prs: &mut PrList, analyses: &Analyses, relations: &Relations, maps: &ServiceMaps) -> bool {
     let p = pal(ui);
     let visible_count = prs.visible().len();
     let mut group_clicked = false;
@@ -69,7 +69,7 @@ pub fn show(ui: &mut egui::Ui, prs: &mut PrList, analyses: &Analyses, relations:
             for entry in &entries {
                 match entry {
                     Entry::Single(pr) => {
-                        if pr_card(ui, pr, selected == Some(pr.key().as_str()), analyses).clicked() {
+                        if pr_card(ui, pr, selected == Some(pr.key().as_str()), analyses, maps).clicked() {
                             clicked = Some(pr.key());
                         }
                     }
@@ -78,7 +78,7 @@ pub fn show(ui: &mut egui::Ui, prs: &mut PrList, analyses: &Analyses, relations:
                         let shown = |key: &str| visible.iter().any(|pr| pr.key() == key);
                         let picked = related::view::group(ui, group, &shown, |ui, key| {
                             let pr = prs.find(key)?;
-                            Some(pr_card(ui, pr, selected == Some(key), analyses))
+                            Some(pr_card(ui, pr, selected == Some(key), analyses, maps))
                         });
                         if picked.is_some() {
                             clicked = picked;
@@ -95,7 +95,7 @@ pub fn show(ui: &mut egui::Ui, prs: &mut PrList, analyses: &Analyses, relations:
 }
 
 /// The card of one PR in the list.
-pub fn pr_card(ui: &mut egui::Ui, pr: &PullRequest, selected: bool, analyses: &Analyses) -> egui::Response {
+pub fn pr_card(ui: &mut egui::Ui, pr: &PullRequest, selected: bool, analyses: &Analyses, maps: &ServiceMaps) -> egui::Response {
     let p = pal(ui);
     let key = pr.key();
     let stored = analyses.results.get(&key);
@@ -143,10 +143,10 @@ pub fn pr_card(ui: &mut egui::Ui, pr: &PullRequest, selected: bool, analyses: &A
                 avatar(ui, &pr.author, 16.0);
             });
         });
-        if service_map::applies(&pr.repo) {
+        if let Some(map) = maps.for_repo(&pr.repo) {
             let from_ai = analysis.map(|a| a.service_impact.as_slice()).unwrap_or(&[]);
-            let (impacts, _) = service_map::resolve_impact(&pr.repo, from_ai);
-            service_map::view::service_chips(ui, &impacts);
+            let (impacts, _) = service_map::resolve_impact(map, &pr.repo, from_ai);
+            service_map::view::service_chips(ui, map, &impacts);
         }
     });
     if let Some(a) = analysis {

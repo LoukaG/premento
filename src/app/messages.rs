@@ -4,13 +4,14 @@ use anyhow::Result;
 use eframe::egui;
 
 use super::PRementoApp;
-use crate::features::{analysis, ask, pull_requests, related};
+use crate::features::{analysis, ask, pull_requests, related, service_map};
 
 pub enum Msg {
     Prs(Result<pull_requests::Loaded>),
     Analysis(analysis::Event),
     Ask(ask::Ready),
     Related(related::Event),
+    Map(service_map::Event),
 }
 
 impl PRementoApp {
@@ -33,6 +34,7 @@ impl PRementoApp {
                     self.analyses.on_event(event);
                 }
                 Msg::Related(event) => self.relations.on_event(event),
+                Msg::Map(event) => self.maps.on_event(event),
                 Msg::Ask(ready) => {
                     let pr = self.prs.find(&ready.key);
                     self.asks.on_ready(ctx, ready, pr, &self.config.terminal);

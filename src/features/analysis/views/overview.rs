@@ -3,14 +3,15 @@
 use eframe::egui::{self, Align, Layout, RichText, vec2};
 
 use crate::features::analysis::Analysis;
-use crate::features::service_map;
+use crate::features::service_map::{self, ServiceMap};
 use crate::ui::blocks::{big_number, list_card, stat_tile};
 use crate::ui::theme::{pal, severity_color, severity_rank};
 use crate::ui::widgets::{body, card, meter, muted, section_title, solid_pill};
 
-pub fn overview(ui: &mut egui::Ui, a: &Analysis, repo: &str) {
+/// `map`: the service map that lists the PR's repo, if any.
+pub fn overview(ui: &mut egui::Ui, a: &Analysis, repo: &str, map: Option<&ServiceMap>) {
     let p = pal(ui);
-    let services = service_map::applies(repo).then(|| service_map::resolve_impact(repo, &a.service_impact).0);
+    let services = map.map(|m| (m, service_map::resolve_impact(m, repo, &a.service_impact).0));
     // High and critical risk factors, most severe first.
     let mut serious: Vec<_> = a.risk.factors.iter().filter(|f| severity_rank(&f.severity) >= 3).collect();
     serious.sort_by_key(|f| std::cmp::Reverse(severity_rank(&f.severity)));
@@ -30,7 +31,7 @@ pub fn overview(ui: &mut egui::Ui, a: &Analysis, repo: &str) {
         stat_tile(&mut cols[1], "Serious risks", |ui| {
             big_number(ui, serious.len(), a.risk.factors.len(), "factors");
         });
-        if let Some(services) = &services {
+        if let Some((_, services)) = &services {
             let direct = services.iter().filter(|i| i.level.eq_ignore_ascii_case("direct")).count();
             stat_tile(&mut cols[2], "Services impacted", |ui| {
                 ui.horizontal(|ui| {
@@ -103,11 +104,11 @@ pub fn overview(ui: &mut egui::Ui, a: &Analysis, repo: &str) {
 
     ui.columns(2, |cols| {
         match &services {
-            Some(services) => {
+            Some((map, services)) => {
                 let names: Vec<String> = services
                     .iter()
                     .filter_map(|i| {
-                        service_map::node(&i.service).map(|n| format!("{} ({}): {}", n.name, i.level, i.reason))
+                        map.node(&i.service).map(|n| format!("{} ({}): {}", n.name, i.level, i.reason))
                     })
                     .collect();
                 list_card(&mut cols[0], "🗺", "Impacted services", &names, p.accent_text);

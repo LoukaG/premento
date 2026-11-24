@@ -11,7 +11,6 @@ use chrono::Utc;
 use super::{StoredAnalysis, cache, prompt};
 use crate::features::providers::{Selection, runner};
 use crate::features::pull_requests::{PullRequest, github};
-use crate::features::service_map;
 
 /// An analysis running in the background.
 pub struct Job {
@@ -35,12 +34,14 @@ pub struct Analyses {
 }
 
 impl Analyses {
-    /// Analyzes `pr` in the background with the picked provider. `emit` receives the progress
-    /// on the background thread.
+    /// Analyzes `pr` in the background with the picked provider. `service_map`: the
+    /// architecture of the system the PR belongs to, if a map lists its repo. `emit` receives
+    /// the progress on the background thread.
     pub fn start(
         &mut self,
         pr: &PullRequest,
         selection: Selection,
+        service_map: Option<String>,
         max_diff: usize,
         timeout: Duration,
         emit: impl Fn(Event) + Send + 'static,
@@ -70,8 +71,7 @@ impl Analyses {
                 let pr_ctx = github::fetch_context(&repo, number, max_diff)?;
                 stage(format!("{label} is reviewing the changes…"));
                 let started = Instant::now();
-                let map = service_map::applies(&repo).then(|| service_map::prompt_section(&repo));
-                let prompt = prompt::build_prompt(&pr_ctx.text, map.as_deref());
+                let prompt = prompt::build_prompt(&pr_ctx.text, service_map.as_deref());
                 let raw = runner::run(&provider, model.as_deref(), &prompt, timeout, cancel)?;
                 let (analysis, parse_error) = match prompt::parse(&raw) {
                     Ok(a) => (Some(a), None),

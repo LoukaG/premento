@@ -1,0 +1,349 @@
+{
+  "id": "attraction-inc-demo",
+  "name": "attraction-inc",
+  "folder": "/Users/demo/attraction-inc",
+  "created_at": 1764000000,
+  "provider": "Claude Code",
+  "nodes": [
+    {
+      "id": "frontend",
+      "name": "Studio Frontend",
+      "kind": "surface",
+      "repos": [
+        "attraction-inc/studio-frontend"
+      ],
+      "description": "Jameo & Attraction Studio (same React app, tenant build) incl. the design editor and Speculoos"
+    },
+    {
+      "id": "website",
+      "name": "Attraction Website",
+      "kind": "surface",
+      "repos": [
+        "attraction-inc/attraction-website"
+      ],
+      "description": "Public multilingual marketing & product-discovery site (static product pages from Fibra)"
+    },
+    {
+      "id": "multiplayer",
+      "name": "Multiplayer",
+      "kind": "service",
+      "repos": [
+        "attraction-inc/multiplayer"
+      ],
+      "description": "WebSocket presence and real-time collaboration (DynamoDB connection state)"
+    },
+    {
+      "id": "render-service",
+      "name": "Render Service",
+      "kind": "service",
+      "repos": [
+        "attraction-inc/render-service"
+      ],
+      "description": "Stateless server-side WebGL rendering for artwork, previews and backend PDFs"
+    },
+    {
+      "id": "design-state",
+      "name": "Design State",
+      "kind": "service",
+      "repos": [
+        "attraction-inc/design-state",
+        "attraction-inc/uw-designer"
+      ],
+      "description": "Design records, mutations, product definitions and preview images (DynamoDB/S3)"
+    },
+    {
+      "id": "asset-manager",
+      "name": "Asset Manager",
+      "kind": "service",
+      "repos": [
+        "attraction-inc/asset-manager"
+      ],
+      "description": "Python/FastAPI: uploads, artwork authorization, image processing, stitch estimates"
+    },
+    {
+      "id": "backend",
+      "name": "Studio Backend",
+      "kind": "service",
+      "repos": [
+        "attraction-inc/studio-backend"
+      ],
+      "description": "Users, teams, roles/permissions, orders, pricing, techpacks, sessions (Postgres)"
+    },
+    {
+      "id": "fibra",
+      "name": "Fibra · Public API",
+      "kind": "service",
+      "repos": [
+        "attraction-inc/fibra",
+        "attraction-inc/api"
+      ],
+      "description": "Catalogue, inventory, public API (api.attraction.com), MCP, Prextra syncs, distribution"
+    },
+    {
+      "id": "specs-service",
+      "name": "Specs Service",
+      "kind": "service",
+      "repos": [
+        "attraction-inc/studio-specs"
+      ],
+      "description": "Specs revisions (Speculoos), runtime merge, publish of public/private specs.json"
+    },
+    {
+      "id": "specs-baseline",
+      "name": "Baseline Specs",
+      "kind": "data",
+      "repos": [
+        "attraction-inc/specs-as-a-file"
+      ],
+      "description": "Legacy versioned baseline specs.json (products, decorations, pricing) in private S3"
+    },
+    {
+      "id": "prextra",
+      "name": "Prextra ERP",
+      "kind": "external",
+      "repos": [],
+      "description": "Company ERP; system of record for inventory, posts product/inventory/pricing syncs"
+    },
+    {
+      "id": "distributors",
+      "name": "Distributors",
+      "kind": "external",
+      "repos": [],
+      "description": "SAGE Connect CA/US, ASI/ESP+, PromoStandards consumers"
+    },
+    {
+      "id": "webgl",
+      "name": "WebGL Decorations",
+      "kind": "package",
+      "repos": [
+        "attraction-inc/webgl-decorations"
+      ],
+      "description": "@attraction-inc/webgl-decorations: the Generator (renders designs) for Studio & Render Service"
+    },
+    {
+      "id": "specs-validation",
+      "name": "Specs Validation",
+      "kind": "package",
+      "repos": [
+        "attraction-inc/specs-validation"
+      ],
+      "description": "@attraction-inc/specs-validation: specs contracts shared by Frontend and Specs Service"
+    },
+    {
+      "id": "translations",
+      "name": "Studio Translations",
+      "kind": "package",
+      "repos": [
+        "attraction-inc/studio-translations"
+      ],
+      "description": "@attraction-inc/studio-translations for Frontend, Backend, Fibra; validates specs labels"
+    },
+    {
+      "id": "pdf-maker",
+      "name": "PDF Maker",
+      "kind": "package",
+      "repos": [
+        "attraction-inc/typst_pdf_generator"
+      ],
+      "description": "Typst techpacks, mockups and client proofs generated for Backend"
+    },
+    {
+      "id": "infra",
+      "name": "AWS Infra",
+      "kind": "tooling",
+      "repos": [
+        "attraction-inc/attraction-infra",
+        "attraction-inc/attraction-infra-us-east-1"
+      ],
+      "description": "Shared AWS infrastructure (ca-central-1 + us-east-1), internal Slack automations"
+    },
+    {
+      "id": "workspace",
+      "name": "Workspace",
+      "kind": "tooling",
+      "repos": [
+        "attraction-inc/workspace"
+      ],
+      "description": "Local integration stack (docker-compose), architecture docs, scripts"
+    },
+    {
+      "id": "live-e2e",
+      "name": "Live E2E",
+      "kind": "tooling",
+      "repos": [
+        "attraction-inc/live-e2e"
+      ],
+      "description": "Playwright smoke tests against deployed Studios (staging & prod)"
+    }
+  ],
+  "edges": [
+    {
+      "from": "frontend",
+      "to": "backend",
+      "label": "API, session"
+    },
+    {
+      "from": "frontend",
+      "to": "design-state",
+      "label": "designs, previews"
+    },
+    {
+      "from": "frontend",
+      "to": "asset-manager",
+      "label": "uploads"
+    },
+    {
+      "from": "frontend",
+      "to": "render-service",
+      "label": "artwork previews"
+    },
+    {
+      "from": "frontend",
+      "to": "multiplayer",
+      "label": "WebSocket"
+    },
+    {
+      "from": "frontend",
+      "to": "specs-service",
+      "label": "Speculoos revisions"
+    },
+    {
+      "from": "frontend",
+      "to": "fibra",
+      "label": "catalogue"
+    },
+    {
+      "from": "website",
+      "to": "fibra",
+      "label": "products, inventory, pricing"
+    },
+    {
+      "from": "backend",
+      "to": "design-state",
+      "label": "designs for orders/techpacks"
+    },
+    {
+      "from": "backend",
+      "to": "asset-manager",
+      "label": "stitch estimates, assets"
+    },
+    {
+      "from": "backend",
+      "to": "render-service",
+      "label": "PDF renders"
+    },
+    {
+      "from": "backend",
+      "to": "specs-service",
+      "label": "private catalogue"
+    },
+    {
+      "from": "backend",
+      "to": "fibra",
+      "label": "catalogue order, minimums"
+    },
+    {
+      "from": "backend",
+      "to": "pdf-maker",
+      "label": "techpacks, proofs"
+    },
+    {
+      "from": "design-state",
+      "to": "specs-service",
+      "label": "runtime specs"
+    },
+    {
+      "from": "design-state",
+      "to": "asset-manager",
+      "label": "decoration assets"
+    },
+    {
+      "from": "design-state",
+      "to": "multiplayer",
+      "label": "broadcast"
+    },
+    {
+      "from": "asset-manager",
+      "to": "backend",
+      "label": "session validation"
+    },
+    {
+      "from": "asset-manager",
+      "to": "design-state",
+      "label": "design reads"
+    },
+    {
+      "from": "fibra",
+      "to": "specs-service",
+      "label": "published specs"
+    },
+    {
+      "from": "fibra",
+      "to": "backend",
+      "label": "customer auth"
+    },
+    {
+      "from": "fibra",
+      "to": "distributors",
+      "label": "push / PromoStandards"
+    },
+    {
+      "from": "prextra",
+      "to": "fibra",
+      "label": "product & inventory syncs"
+    },
+    {
+      "from": "specs-service",
+      "to": "specs-baseline",
+      "label": "baseline merge"
+    },
+    {
+      "from": "specs-service",
+      "to": "fibra",
+      "label": "publish sync"
+    },
+    {
+      "from": "frontend",
+      "to": "webgl",
+      "label": "package"
+    },
+    {
+      "from": "render-service",
+      "to": "webgl",
+      "label": "package"
+    },
+    {
+      "from": "frontend",
+      "to": "specs-validation",
+      "label": "package"
+    },
+    {
+      "from": "specs-service",
+      "to": "specs-validation",
+      "label": "package"
+    },
+    {
+      "from": "frontend",
+      "to": "translations",
+      "label": "package"
+    },
+    {
+      "from": "backend",
+      "to": "translations",
+      "label": "package"
+    },
+    {
+      "from": "fibra",
+      "to": "translations",
+      "label": "package"
+    },
+    {
+      "from": "specs-baseline",
+      "to": "translations",
+      "label": "label validation"
+    }
+  ],
+  "notes": [
+    "Studio (frontend + backend) runs one tenant per brand. The Jameo tenant is used by clients (customer-facing). The Attraction tenant is only available to Attraction admins and staff, never to clients: a change that only affects the Attraction tenant is `internal`."
+  ]
+}

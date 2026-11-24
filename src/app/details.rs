@@ -1,16 +1,15 @@
-//! The central panel: the selected PR with its analysis tabs, or the service map when none is.
+//! The central panel: the selected PR with its analysis tabs, or the service maps when none is.
 
-use eframe::egui::{self, RichText};
+use eframe::egui;
 
 use super::PRementoApp;
 use crate::features::analysis::views::{self, action_bar};
 use crate::features::ask::{self, Launch};
 use crate::features::pull_requests::header;
 use crate::features::related;
-use crate::features::service_map;
+use crate::features::service_map::{self, page::Action};
 use crate::ui::blocks::banner;
-use crate::ui::theme::pal;
-use crate::ui::widgets::{self, card, muted};
+use crate::ui::widgets::{self, card};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
@@ -23,7 +22,7 @@ pub enum Tab {
 }
 
 impl Tab {
-    /// attraction-inc PRs get the service map in place of the generic impact analysis.
+    /// PRs whose repo is on a service map get the map in place of the generic impact analysis.
     pub fn for_pr(on_map: bool) -> [(Tab, &'static str); 5] {
         [
             (Tab::Overview, "Overview"),
@@ -37,17 +36,12 @@ impl Tab {
 
 impl PRementoApp {
     pub(super) fn details(&mut self, ui: &mut egui::Ui) {
-        let p = pal(ui);
         let Some(pr) = self.prs.selected_pr().cloned() else {
-            ui.label(RichText::new("Service map").size(24.0).strong().color(p.text));
-            ui.label(muted(
-                ui,
-                "attraction-inc services and their main connections. Select a PR to see which services it impacts.",
-            ));
-            ui.add_space(10.0);
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                card(ui, |ui| service_map::view::draw(ui, &[]));
-            });
+            match service_map::page::show(ui, &mut self.maps, &mut self.picker) {
+                Some(Action::Generate(folder)) => self.start_map(ui.ctx(), Some(folder)),
+                Some(Action::Cancel) => self.start_map(ui.ctx(), None),
+                None => {}
+            }
             return;
         };
         let key = pr.key();
@@ -79,7 +73,8 @@ impl PRementoApp {
             return;
         };
 
-        let on_map = service_map::applies(&pr.repo);
+        let map = self.maps.for_repo(&pr.repo).cloned();
+        let on_map = map.is_some();
         match (self.tab, on_map) {
             (Tab::Impact, true) => self.tab = Tab::Map,
             (Tab::Map, false) => self.tab = Tab::Impact,
@@ -99,19 +94,20 @@ impl PRementoApp {
                 ui.spacing_mut().item_spacing.y = 10.0;
                 match (&stored.analysis, self.tab) {
                     (None, _) => views::raw_response(ui, &stored.raw),
-                    (Some(a), Tab::Overview) => views::overview(ui, a, &pr.repo),
+                    (Some(a), Tab::Overview) => views::overview(ui, a, &pr.repo, map.as_ref()),
                     (Some(a), Tab::Risk) => views::risk(ui, a),
                     (Some(a), Tab::Intent) => views::intent(ui, a),
                     (Some(a), Tab::Impact) => views::impact(ui, a),
                     (Some(_), Tab::Ask) => {} // drawn before the scroll area
                     (Some(a), Tab::Map) => {
-                        let (impacts, from_ai) = service_map::resolve_impact(&pr.repo, &a.service_impact);
+                        let Some(map) = &map else { return };
+                        let (impacts, from_ai) = service_map::resolve_impact(map, &pr.repo, &a.service_impact);
                         card(ui, |ui| {
                             service_map::view::legend(ui, !from_ai);
                             ui.add_space(4.0);
-                            service_map::view::draw(ui, &impacts);
+                            service_map::view::draw(ui, map, &impacts);
                         });
-                        service_map::view::impact_list(ui, &impacts);
+                        service_map::view::impact_list(ui, map, &impacts);
                     }
                 }
                 ui.add_space(20.0);
