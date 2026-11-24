@@ -54,7 +54,7 @@ impl PRementoApp {
         header::show(ui, &pr);
         ui.add_space(10.0);
 
-        if action_bar::show(ui, &mut self.picker, &self.analyses, &key) {
+        if action_bar::show(ui, &mut self.picker, &self.analyses, &key, pr.head_sha.as_deref()) {
             self.start_analysis(ui.ctx(), &pr);
         }
 

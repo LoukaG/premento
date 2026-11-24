@@ -142,6 +142,9 @@ fn style(theme: Theme) -> egui::Style {
 
 // ---------------------------------------------------------------- semantic colors
 
+/// An analysis made at an older commit than the PR's head.
+pub const OUTDATED: Color32 = Color32::from_rgb(245, 158, 11);
+
 pub fn severity_rank(s: &str) -> u8 {
     match s.trim().to_lowercase().as_str() {
         "critical" => 4,

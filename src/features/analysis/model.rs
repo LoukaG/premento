@@ -158,3 +158,11 @@ pub struct StoredAnalysis {
     pub parse_error: Option<String>,
     pub raw: String,
 }
+
+impl StoredAnalysis {
+    /// True when the PR has moved to another commit since this analysis. `current_head` is the
+    /// PR's head commit, `None` when unknown (then nothing is claimed).
+    pub fn is_outdated(&self, current_head: Option<&str>) -> bool {
+        current_head.is_some_and(|head| !self.head_sha.is_empty() && head != self.head_sha)
+    }
+}

@@ -20,7 +20,14 @@ impl PRementoApp {
                     let cached = self.prs.on_loaded(result);
                     self.analyses.add_cached(cached);
                 }
-                Msg::Analysis(event) => self.analyses.on_event(event),
+                Msg::Analysis(event) => {
+                    if let analysis::Event::Done(key, result) = &event
+                        && let Ok(stored) = result.as_ref()
+                    {
+                        self.prs.set_head(key, &stored.head_sha);
+                    }
+                    self.analyses.on_event(event);
+                }
                 Msg::Ask(ready) => {
                     let pr = self.prs.find(&ready.key);
                     self.asks.on_ready(ctx, ready, pr, &self.config.terminal);

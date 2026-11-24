@@ -93,6 +93,13 @@ impl PrList {
         self.prs.iter().find(|pr| pr.key() == key)
     }
 
+    /// Records the head commit an analysis just saw, which can be newer than the last refresh's.
+    pub fn set_head(&mut self, key: &str, sha: &str) {
+        if let Some(pr) = self.prs.iter_mut().find(|pr| pr.key() == key) {
+            pr.head_sha = Some(sha.to_owned());
+        }
+    }
+
     pub fn selected_pr(&self) -> Option<&PullRequest> {
         self.selected.as_deref().and_then(|k| self.find(k))
     }

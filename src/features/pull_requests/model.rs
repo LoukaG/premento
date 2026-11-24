@@ -28,6 +28,8 @@ pub struct PullRequest {
     pub updated_at: String,
     pub labels: Vec<String>,
     pub roles: Vec<Role>,
+    /// The PR's current head commit; `None` when GitHub could not be asked for it.
+    pub head_sha: Option<String>,
 }
 
 impl PullRequest {

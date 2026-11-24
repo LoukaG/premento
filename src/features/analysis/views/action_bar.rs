@@ -9,11 +9,18 @@ use crate::core::format::ago;
 use crate::features::analysis::Analyses;
 use crate::features::providers::ProviderPicker;
 use crate::ui::blocks::indeterminate_bar;
-use crate::ui::theme::pal;
-use crate::ui::widgets::{card, ghost_button, primary_button};
+use crate::ui::theme::{OUTDATED, pal};
+use crate::ui::widgets::{card, ghost_button, pill, primary_button};
 
 /// Returns true when Analyze (or Re-analyze) was clicked.
-pub fn show(ui: &mut egui::Ui, picker: &mut ProviderPicker, analyses: &Analyses, key: &str) -> bool {
+/// `current_head` is the PR's head commit, when known: an analysis of another commit is flagged.
+pub fn show(
+    ui: &mut egui::Ui,
+    picker: &mut ProviderPicker,
+    analyses: &Analyses,
+    key: &str,
+    current_head: Option<&str>,
+) -> bool {
     let p = pal(ui);
     let mut analyze = false;
     card(ui, |ui| {
@@ -44,6 +51,12 @@ pub fn show(ui: &mut egui::Ui, picker: &mut ProviderPicker, analyses: &Analyses,
                         .color(p.faint),
                     )
                     .on_hover_text("Tool · model · analyzed · duration · head commit");
+                    if !running && stored.is_outdated(current_head) {
+                        pill(ui, "Outdated", OUTDATED).on_hover_text(format!(
+                            "The PR has new commits since this analysis (now at {}). Re-analyze to review them.",
+                            current_head.map(|h| &h[..h.len().min(7)]).unwrap_or_default()
+                        ));
+                    }
                 });
             }
         });

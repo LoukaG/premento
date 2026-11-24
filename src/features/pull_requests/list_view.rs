@@ -6,7 +6,7 @@ use super::{Filter, PrList, PullRequest, Role};
 use crate::core::format::ago_str;
 use crate::features::analysis::Analyses;
 use crate::features::service_map;
-use crate::ui::theme::{pal, severity_color};
+use crate::ui::theme::{OUTDATED, pal, severity_color};
 use crate::ui::widgets::{avatar, clickable_card, muted, paint_stripe, pill, segmented, solid_pill};
 
 pub fn show(ui: &mut egui::Ui, prs: &mut PrList, analyses: &Analyses) {
@@ -58,7 +58,9 @@ pub fn show(ui: &mut egui::Ui, prs: &mut PrList, analyses: &Analyses) {
             for pr in &visible {
                 let key = pr.key();
                 let selected = prs.selected.as_deref() == Some(key.as_str());
-                let analysis = analyses.results.get(&key).and_then(|s| s.analysis.as_ref());
+                let stored = analyses.results.get(&key);
+                let analysis = stored.and_then(|s| s.analysis.as_ref());
+                let outdated = stored.is_some_and(|s| s.is_outdated(pr.head_sha.as_deref()));
                 let running = analyses.jobs.contains_key(&key);
 
                 let resp = clickable_card(ui, ui.scope_id().with(("pr", &key)), selected, |ui| {
@@ -75,6 +77,10 @@ pub fn show(ui: &mut egui::Ui, prs: &mut PrList, analyses: &Analyses) {
                                 ui.label(RichText::new("Analyzing").size(11.5).color(p.accent_text));
                             } else if let Some(a) = analysis {
                                 solid_pill(ui, a.risk.level.to_uppercase(), severity_color(&a.risk.level));
+                            }
+                            if outdated && !running {
+                                pill(ui, "Outdated", OUTDATED)
+                                    .on_hover_text("The PR has new commits since it was analyzed.");
                             }
                             if pr.is_draft {
                                 pill(ui, "Draft", p.muted);

@@ -64,6 +64,7 @@ fn demo_app() -> PRementoApp {
         updated_at: (now - chrono::Duration::hours(hours)).to_rfc3339(),
         labels: if n == 412 { vec!["auth".into(), "backend".into()] } else { vec![] },
         roles,
+        head_sha: None,
     };
     app.prs.prs = vec![
         pr("attraction-inc/fibra", 412, "Rotate refresh tokens on every use and revoke reused tokens", "mira", 2, vec![Role::ReviewRequested], false),
@@ -169,5 +170,10 @@ fn render_screens() {
         }
         h.render().unwrap().save(format!("{dir}/{tname}-ask-running.png")).unwrap();
         h.state_mut().asks.sessions.clear();
+        // The PR got new commits after its analysis.
+        h.state_mut().prs.set_head("attraction-inc/fibra#412", "c0ffee1234");
+        h.state_mut().tab = Tab::Overview;
+        h.run_steps(4);
+        h.render().unwrap().save(format!("{dir}/{tname}-outdated.png")).unwrap();
     }
 }

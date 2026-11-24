@@ -96,6 +96,7 @@ pub fn fetch_prs(limit: u32) -> Result<Vec<PullRequest>> {
                     updated_at: item.updated_at,
                     labels: item.labels.into_iter().map(|l| l.name).collect(),
                     roles: vec![],
+                    head_sha: None,
                 });
             if !pr.roles.contains(&role) {
                 pr.roles.push(role);
@@ -108,7 +109,46 @@ pub fn fetch_prs(limit: u32) -> Result<Vec<PullRequest>> {
         pr.roles.sort();
     }
     prs.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    fetch_head_shas(&mut prs);
     Ok(prs)
+}
+
+/// Fills in each PR's head commit, which `gh search prs` does not return, with one GraphQL
+/// query per 100 PRs. Best effort: a PR whose head cannot be read keeps `None`.
+fn fetch_head_shas(prs: &mut [PullRequest]) {
+    for chunk in prs.chunks_mut(100) {
+        let Some(query) = head_query(chunk) else { continue };
+        // Not `gh()`: when some repositories cannot be read, gh exits non-zero but still prints
+        // the data of the others.
+        let Ok(out) = Command::new("gh").args(["api", "graphql", "-f", &format!("query={query}")]).output() else {
+            return;
+        };
+        let Ok(v) = serde_json::from_slice::<Value>(&out.stdout) else { continue };
+        for (i, pr) in chunk.iter_mut().enumerate() {
+            pr.head_sha = v["data"][format!("p{i}")]["pullRequest"]["headRefOid"]
+                .as_str()
+                .filter(|sha| !sha.is_empty())
+                .map(str::to_owned);
+        }
+    }
+}
+
+/// `query { p0: repository(owner: "o", name: "r") { pullRequest(number: 1) { headRefOid } } ... }`,
+/// with `p{i}` for the i-th PR. `None` when no PR has a usable repository name.
+fn head_query(prs: &[PullRequest]) -> Option<String> {
+    let safe = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+    let fields: Vec<String> = prs
+        .iter()
+        .enumerate()
+        .filter_map(|(i, pr)| {
+            let (owner, name) = pr.repo.split_once('/').filter(|(o, n)| safe(o) && safe(n))?;
+            Some(format!(
+                r#"p{i}: repository(owner: "{owner}", name: "{name}") {{ pullRequest(number: {}) {{ headRefOid }} }}"#,
+                pr.number
+            ))
+        })
+        .collect();
+    (!fields.is_empty()).then(|| format!("query {{ {} }}", fields.join(" ")))
 }
 
 /// Everything the LLM needs to know about a PR, rendered as a single text document.
@@ -247,4 +287,34 @@ fn truncate(text: &str, max: usize) -> String {
         end,
         text.len()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pr(repo: &str, number: u64) -> PullRequest {
+        PullRequest {
+            repo: repo.into(),
+            number,
+            title: String::new(),
+            url: String::new(),
+            author: String::new(),
+            is_draft: false,
+            updated_at: String::new(),
+            labels: vec![],
+            roles: vec![],
+            head_sha: None,
+        }
+    }
+
+    #[test]
+    fn head_query_aliases_by_position_and_skips_odd_repo_names() {
+        let q = head_query(&[pr("o/a", 1), pr("o/\"x", 2), pr("o/b.c", 3)]).unwrap();
+        assert_eq!(
+            q,
+            r#"query { p0: repository(owner: "o", name: "a") { pullRequest(number: 1) { headRefOid } } p2: repository(owner: "o", name: "b.c") { pullRequest(number: 3) { headRefOid } } }"#
+        );
+        assert!(head_query(&[pr("no-slash", 1)]).is_none());
+    }
 }
