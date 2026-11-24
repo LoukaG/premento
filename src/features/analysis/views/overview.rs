@@ -1,10 +1,10 @@
-//! Overview tab: headline numbers, summary and the riskiest areas.
+//! Overview tab: headline numbers, why/what/impact and the riskiest areas.
 
 use eframe::egui::{self, Align, Layout, RichText, vec2};
 
 use crate::features::analysis::Analysis;
 use crate::features::service_map;
-use crate::ui::blocks::{big_number, callout, list_card, stat_tile};
+use crate::ui::blocks::{big_number, list_card, stat_tile};
 use crate::ui::theme::{pal, severity_color, severity_rank};
 use crate::ui::widgets::{body, card, meter, muted, section_title, solid_pill};
 
@@ -57,10 +57,20 @@ pub fn overview(ui: &mut egui::Ui, a: &Analysis, repo: &str) {
 
     card(ui, |ui| {
         section_title(ui, "Summary");
-        body(ui, &a.summary);
-        if !a.risk.recommended_review_depth.is_empty() {
-            ui.add_space(6.0);
-            callout(ui, "🎯", "Recommended review", &a.risk.recommended_review_depth);
+        if a.brief.is_empty() {
+            body(ui, &a.summary);
+        } else {
+            for (label, text) in [("Why", &a.brief.why), ("What", &a.brief.what), ("Impact", &a.brief.impact)] {
+                if !text.is_empty() {
+                    ui.horizontal_top(|ui| {
+                        ui.allocate_ui_with_layout(vec2(56.0, 20.0), Layout::left_to_right(Align::Center), |ui| {
+                            ui.set_min_width(56.0);
+                            ui.label(RichText::new(label).size(12.0).strong().color(p.muted));
+                        });
+                        ui.add(egui::Label::new(RichText::new(text).color(p.text).line_height(Some(20.0))).wrap());
+                    });
+                }
+            }
         }
     });
 

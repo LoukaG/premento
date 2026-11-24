@@ -1,4 +1,4 @@
-//! Larger building blocks composed from the widgets: stat tiles, list cards, callouts, banners.
+//! Larger building blocks composed from the widgets: stat tiles, list cards, banners.
 
 use eframe::egui::{
     self, Align, Color32, CornerRadius, Layout, Margin, RichText, Sense, Stroke, pos2, vec2,
@@ -52,25 +52,6 @@ pub fn list_card(ui: &mut egui::Ui, icon: &str, title: &str, items: &[String], c
             });
         }
     });
-}
-
-pub fn callout(ui: &mut egui::Ui, icon: &str, title: &str, text: &str) {
-    let p = pal(ui);
-    egui::Frame::new()
-        .fill(p.accent.gamma_multiply(if ui.visuals().dark_mode { 0.12 } else { 0.07 }))
-        .corner_radius(CornerRadius::same(8))
-        .inner_margin(Margin::symmetric(12, 8))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal_top(|ui| {
-                ui.label(RichText::new(icon).color(p.accent_text));
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 2.0;
-                    ui.label(RichText::new(title).size(12.0).strong().color(p.accent_text));
-                    ui.add(egui::Label::new(RichText::new(text).color(p.text)).wrap());
-                });
-            });
-        });
 }
 
 pub fn code_chip(ui: &mut egui::Ui, text: &str) {

@@ -1,6 +1,6 @@
 //! Which services a PR impacts, and the service map as LLM prompt text.
 
-use super::graph::{EDGES, NODES, Node, ORG};
+use super::graph::{AUDIENCE_NOTES, EDGES, NODES, Node, ORG};
 use crate::features::analysis::ServiceImpact;
 
 pub fn applies(repo: &str) -> bool {
@@ -95,6 +95,10 @@ pub fn prompt_section(repo: &str) -> String {
     s.push_str("\nCONNECTIONS (caller -> callee: what)\n");
     for e in EDGES {
         s.push_str(&format!("- {} -> {}: {}\n", e.from, e.to, e.label));
+    }
+    s.push_str("\nAUDIENCE (use for audience.facing)\n");
+    for note in AUDIENCE_NOTES {
+        s.push_str(&format!("- {note}\n"));
     }
     let own: Vec<&str> = nodes_for_repo(repo).iter().map(|n| n.id).collect();
     s.push_str(&format!(

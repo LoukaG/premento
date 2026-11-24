@@ -5,45 +5,46 @@ use anyhow::{Context, Result, anyhow};
 use super::model::Analysis;
 
 const SCHEMA_CORE: &str = r#"{
-  "summary": "2-4 sentence plain-language summary of what this PR does",
+  "brief": {
+    "why": "one sentence, max 25 words: the context or problem that motivates this PR",
+    "what": "one sentence, max 25 words: the decision taken, i.e. what the PR changes",
+    "impact": "one sentence, max 25 words: who or what is affected by the change"
+  },
   "risk": {
     "complexity": {
       "score": 0-10,
-      "reason": "how hard this change is to get right: size, logic, concurrency, state, migrations, number of moving parts"
+      "reason": "max 20 words: how hard this change is to get right"
     },
     "worst_case": {
       "tier": "cosmetic | feature | core_flow | system_wide",
-      "scenario": "the realistic worst thing that happens if this PR has a bug"
+      "scenario": "max 20 words: the realistic worst thing that happens if this PR has a bug"
     },
     "audience": {
       "facing": "customer | partner | internal | developer",
-      "reason": "who uses the code this PR changes"
+      "reason": "max 20 words: who uses the code this PR changes"
     },
-    "rationale": "why this overall risk, in terms of the three dimensions above",
-    "recommended_review_depth": "e.g. 'quick skim', 'careful line-by-line', 'needs domain expert + tests run locally'",
     "factors": [
       {
         "area": "short name of the risk (e.g. 'auth token handling')",
-        "severity": "low | medium | high | critical",
-        "description": "what could go wrong and why",
-        "files": ["paths involved"],
-        "mitigation": "what the reviewer should verify or ask for"
+        "severity": "medium | high | critical",
+        "description": "one sentence, max 25 words: what could go wrong",
+        "files": ["paths involved"]
       }
     ]
   },
   "intent": {
-    "stated_intent": "what the author says the PR does (from title/description/commits)",
-    "inferred_intent": "what the code actually appears to do",
-    "alignment": "does the code match the stated intent? call out scope creep, missing pieces or unrelated changes",
+    "stated_intent": "one sentence: what the author says the PR does (from title/description/commits)",
+    "inferred_intent": "one sentence: what the code actually appears to do",
+    "alignment": "one sentence: does the code match the stated intent? name any scope creep or missing piece",
     "decisions": [
       {
         "decision": "a design/implementation choice made in this PR",
-        "rationale": "why it was made (quote the source if explicit, otherwise say it is inferred)",
-        "alternatives": "plausible alternatives that were not chosen",
+        "rationale": "one short sentence: why it was made (say if inferred)",
+        "alternatives": "one short sentence: plausible alternatives not chosen",
         "source": "description | commit | discussion | code (inferred)"
       }
     ],
-    "open_questions": ["questions the reviewer should ask the author"]
+    "open_questions": ["one line: a question that would clarify the context or the decision"]
   },"#;
 
 const SCHEMA_IMPACT: &str = r#"
@@ -90,9 +91,10 @@ downstream consumers, data, security, performance, tests).",
         ),
     };
     format!(
-        "You are a senior staff engineer helping a teammate review a GitHub pull request.\n\
+        "You are a senior staff engineer helping a teammate quickly understand a GitHub pull request: \
+why it exists, what it decides and what it affects. This is not a code review.\n\
 Produce three analyses of the PR below:\n\
-1. Risk-Based Review: how risky is this change, which areas carry the risk, and how deep the review must be.\n\
+1. Risk: how risky is this change and which areas carry the risk.\n\
 2. Intent & Decision Log: what the PR is meant to do, whether the code matches, and the design decisions made (with rationale and alternatives).\n\
 {impact_task}\n\n\
 Rate the risk on three dimensions (the app computes the overall score from them, do not return one):\n\
@@ -105,6 +107,8 @@ can reach, not by the size of the diff: a one-line change to auth middleware is 
 - audience.facing: who is exposed. `customer` = end customers or public users; `partner` = B2B partners, distributors \
 or public API consumers; `internal` = admin, back-office or staff-only tools; `developer` = CI, build, tests, docs or \
 dev tooling only. If several apply, pick the most exposed one.\n\n\
+Be terse: short sentences, no filler, never restate the same point in several fields, respect the word limits. \
+List at most 3 risk factors (medium severity or above), 4 decisions and 3 open questions; fewer is fine.\n\
 Be specific and grounded in the diff; reference file paths and function names. Do not invent facts — if something is inferred, say so. \
 Do not run tools or modify files; everything you need is below.\n\n\
 Respond with ONLY a single JSON object (no markdown fences, no prose before or after) matching this shape:\n\
@@ -138,6 +142,16 @@ mod tests {
         let a = parse(raw).unwrap();
         assert_eq!(a.risk.level, "high");
         assert!(a.impact.breaking_changes.is_empty());
+    }
+
+    #[test]
+    fn parses_legacy_analysis_with_summary() {
+        let raw = r#"{"summary":"old","risk":{"rationale":"r","recommended_review_depth":"skim",
+            "factors":[{"area":"a","severity":"high","mitigation":"m"}]}}"#;
+        let a = parse(raw).unwrap();
+        assert_eq!(a.summary, "old");
+        assert!(a.brief.is_empty());
+        assert_eq!(a.risk.factors.len(), 1);
     }
 
     #[test]

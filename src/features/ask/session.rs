@@ -129,7 +129,7 @@ review.json may be out of date.\n",
 {url}\n\n\
 You are helping a teammate review this pull request. Files in this folder:\n\n\
 - `pr.md`: title, description, labels, commits, changed files, discussion and diff (the diff may be truncated).\n\
-- `review.json`: an AI review made with {provider}: summary, risk (score, complexity, worst case, audience, \
+- `review.json`: an AI review made with {provider}: brief (why, what, impact), risk (score, complexity, worst case, audience, \
 factors), intent and design decisions, and impact.\n\
 {stale}\n\
 Answer questions about this PR. Ground answers in the diff and cite file paths and functions. Say when \

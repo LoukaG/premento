@@ -45,11 +45,11 @@ Claude Code, Codex, Gemini CLI, Ollama, or any other command.
 
 ## Features
 
-Each analysis opens on an **Overview** tab that sums up the tabs below.
+Each analysis opens on an **Overview** tab: why the PR exists, what it decides and what it affects, one line each, plus the headline numbers from the tabs below.
 
 | Tab | What you get |
 |---|---|
-| **Risk Review** | A [risk score](#risk-score) computed from complexity, worst case and audience, how deep to review, and risk factors with severity, files and what to verify |
+| **Risk Review** | A [risk score](#risk-score) computed from complexity, worst case and audience, and up to three risk factors with severity and files |
 | **Intent & Decisions** | What the PR says it does vs. what the code actually does, whether they match, the design decisions taken (why, alternatives, source) and questions to ask the author |
 | **Service Map** (attraction-inc PRs) | The attraction-inc architecture as a map, with each impacted service highlighted as **direct** (its code or config changes) or **indirect** (affected through a connection), colored by severity |
 | **Impact Analysis** (other repos) | Affected components, breaking changes, downstream effects, data/migrations, security, performance, test coverage and suggested tests |

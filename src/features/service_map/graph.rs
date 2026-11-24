@@ -87,6 +87,13 @@ pub const NODES: &[Node] = &[
         description: "Playwright smoke tests against deployed Studios (staging & prod)" },
 ];
 
+/// Who is exposed to each part of the system; guides the LLM's `audience.facing` rating.
+pub const AUDIENCE_NOTES: &[&str] = &[
+    "Studio (frontend + backend) runs one tenant per brand. The Jameo tenant is used by clients (customer-facing). \
+The Attraction tenant is only available to Attraction admins and staff, never to clients: a change that only \
+affects the Attraction tenant is `internal`.",
+];
+
 pub const EDGES: &[Edge] = &[
     // Studio frontend
     Edge { from: "frontend", to: "backend", label: "API, session" },

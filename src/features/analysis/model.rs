@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Analysis {
+    /// Why / what / impact, one line each.
+    pub brief: Brief,
+    /// Free-text summary from analyses made before `brief` existed; shown as a fallback.
     pub summary: String,
     pub risk: RiskReview,
     pub intent: IntentLog,
@@ -12,6 +15,23 @@ pub struct Analysis {
     pub impact: ImpactAnalysis,
     /// Impact on the attraction-inc service map (attraction-inc PRs).
     pub service_impact: Vec<ServiceImpact>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Brief {
+    /// The context or problem behind the PR.
+    pub why: String,
+    /// The decision taken: what the PR changes.
+    pub what: String,
+    /// Who or what is affected.
+    pub impact: String,
+}
+
+impl Brief {
+    pub fn is_empty(&self) -> bool {
+        self.why.is_empty() && self.what.is_empty() && self.impact.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -32,8 +52,6 @@ pub struct RiskReview {
     pub level: String,
     #[serde(deserialize_with = "lenient_number")]
     pub score: f32,
-    pub rationale: String,
-    pub recommended_review_depth: String,
     pub complexity: Complexity,
     pub worst_case: WorstCase,
     pub audience: Audience,
@@ -74,7 +92,6 @@ pub struct RiskFactor {
     pub severity: String,
     pub description: String,
     pub files: Vec<String>,
-    pub mitigation: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

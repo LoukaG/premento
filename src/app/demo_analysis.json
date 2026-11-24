@@ -1,9 +1,13 @@
 {
-  "summary": "Introduces refresh-token rotation: every refresh issues a new token and invalidates the previous one. If a revoked token is presented again, the whole token family is revoked to contain stolen tokens. Adds a token_family column and a background job that prunes expired families.",
+  "brief": {
+    "why": "A security audit flagged that a stolen refresh token stays valid until it expires.",
+    "what": "Rotate the refresh token on every use and revoke the whole token family when an old one is reused.",
+    "impact": "Every signed-in customer on the website and mobile apps; clients must store the new token after each refresh."
+  },
   "risk": {
     "complexity": {
       "score": 7,
-      "reason": "Token rotation with reuse detection, a schema migration on a hot table and a new background job; concurrent refreshes need careful transaction handling."
+      "reason": "Rotation with reuse detection, a migration on a hot table and a new background job."
     },
     "worst_case": {
       "tier": "system_wide",
@@ -13,8 +17,6 @@
       "facing": "customer",
       "reason": "The refresh endpoint is called by the public website and mobile apps for every signed-in customer."
     },
-    "rationale": "Touches the authentication hot path and changes the database schema. A bug here either logs every user out or silently weakens session security. Concurrency between parallel refresh requests from the same client is not obviously handled.",
-    "recommended_review_depth": "Careful line-by-line review of the rotation logic plus a local test of two concurrent refreshes.",
     "factors": [
       {
         "area": "Race between concurrent refreshes",
@@ -22,8 +24,7 @@
         "description": "Two tabs refreshing at once will both present the same token; the second is treated as reuse and revokes the family, logging the user out.",
         "files": [
           "src/auth/refresh.rs"
-        ],
-        "mitigation": "Ask for a short grace window or row-level lock on the token row."
+        ]
       },
       {
         "area": "Migration on a large table",
@@ -31,8 +32,7 @@
         "description": "Adding a NOT NULL column with a default to `sessions` rewrites the table on older Postgres versions.",
         "files": [
           "migrations/0042_token_family.sql"
-        ],
-        "mitigation": "Confirm the production Postgres version or split into add-nullable + backfill."
+        ]
       },
       {
         "area": "Pruning job deletes by created_at",
@@ -40,8 +40,7 @@
         "description": "Families are pruned by creation date rather than last use, which may delete active long-lived sessions.",
         "files": [
           "src/jobs/prune_tokens.rs"
-        ],
-        "mitigation": "Prune on last_used_at instead."
+        ]
       }
     ]
   },
